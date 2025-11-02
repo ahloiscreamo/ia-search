@@ -1,6 +1,5 @@
 ---
 
-````markdown
 # 🎬 ia-search
 
 **ia-search** is an interactive terminal browser and downloader for the **Internet Archive**, powered by `fzf` and `ia-cli`.  
