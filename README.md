@@ -1,4 +1,3 @@
-
 <img width="1211" height="291" alt="Screenshot from 2025-11-02 02-48-13" src="https://github.com/user-attachments/assets/09d59ee5-fa7a-4ad6-bb83-b07f8c100c16" />
 
 <img width="1211" height="981" alt="Screenshot from 2025-11-02 02-50-32" src="https://github.com/user-attachments/assets/7866a334-d7d5-404e-997d-6fd265753444" />
@@ -157,6 +156,3 @@ You can use these in your queries (combine with AND/OR/NOT):
 ▶️ Play or ⬇️ Download
 🎞️ Playing video with mpv...
 ```
-
----
-
