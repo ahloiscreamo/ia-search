@@ -160,7 +160,3 @@ You can use these in your queries (combine with AND/OR/NOT):
 
 ---
 
-## 🚀 License
-
-MIT License — free to use, modify, and share.  
-Made with ❤️ by [Ahloi](https://github.com/ahloiscreamo)
