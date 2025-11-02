@@ -1,6 +1,4 @@
----
-
-# 🎬 ia-search
+## 🎬 ia-search
 
 **ia-search** is an interactive terminal browser and downloader for the **Internet Archive**, powered by `fzf` and `ia-cli`.  
 It lets you **browse**, **search**, **play**, and **download** media directly from your terminal — no web browser needed.
