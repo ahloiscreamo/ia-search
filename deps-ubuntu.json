@@ -1,0 +1,45 @@
+{
+  "dependencies": [
+    {
+      "tool": "ia",
+      "manager": "pip",
+      "package": "internetarchive"
+    },
+    {
+      "tool": "fzf",
+      "manager": "apt",
+      "package": "fzf"
+    },
+    {
+      "tool": "mpv",
+      "manager": "apt",
+      "package": "mpv"
+    },
+    {
+      "tool": "nsxiv",
+      "manager": "apt",
+      "package": "nsxiv"
+    },
+    {
+      "tool": "zathura",
+      "manager": "apt",
+      "package": "zathura"
+    },
+    {
+      "tool": "yt-dlp",
+      "manager": "apt",
+      "package": "yt-dlp"
+    },
+    {
+      "tool": "curl",
+      "manager": "apt",
+      "package": "curl"
+    },
+    {
+      "tool": "pv",
+      "manager": "apt",
+      "package": "pv"
+    }
+  ]
+}
+
