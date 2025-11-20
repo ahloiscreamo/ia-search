@@ -17,6 +17,59 @@ CACHE_FILE="$HOME/.cache/ia-search-collections.json"
 mkdir -p "$(dirname "$CACHE_FILE")"
 CACHE_EXPIRY=$((60*60*24))  # 24 hours
 
+# --- Dependency Check ---
+check_deps() {
+    local missing=0
+    for cmd in fzf jq curl ia pv mpv nsxiv zathura yt-dlp; do
+        if ! command -v "$cmd" &> /dev/null; then
+            echo "❌ Error: Required command '$cmd' is not installed."
+            missing=1
+        fi
+    done
+    [ "$missing" -eq 1 ] && exit 1
+}
+
+# --- Helper: Download and View ---
+download_and_view() {
+    local url="$1"
+    local viewer="$2"
+    local temp_file
+    temp_file=$(mktemp)
+    # Ensure temp file is removed on exit/interrupt
+    trap 'rm -f "$temp_file"' INT TERM EXIT
+
+    echo "⏳ Downloading to view..."
+    curl -sL "$url" | pv > "$temp_file"
+
+    if [ -s "$temp_file" ]; then
+        # Run viewer in the background and clean up afterwards
+        ( "$viewer" "$temp_file" >/dev/null 2>&1; rm -f "$temp_file" ) &
+    else
+        echo "🚫 Failed to download file for viewing."
+        rm -f "$temp_file"
+    fi
+    # Clear the trap so it doesn't fire on successful exit from this function
+    trap - INT TERM EXIT
+}
+
+# --- URL Encode ---
+urlencode() {
+    local string="${1}"
+    local strlen=${#string}
+    local encoded=""
+    local pos c
+
+    for (( pos=0 ; pos<strlen ; pos++ )); do
+        c=${string:$pos:1}
+        case "$c" in
+            [-_.~a-zA-Z0-9] ) o="${c}" ;;
+            * )               printf -v o '%%%02x' "'$c"
+        esac
+        encoded+="${o}"
+    done
+    echo "${encoded}"
+}
+
 # --- Show Collections ---
 show_collections() {
     local PAGE_SIZE=50
@@ -24,7 +77,8 @@ show_collections() {
 
     fetch_collections() {
         echo "📚 Fetching top collections from Internet Archive..."
-        json=$(curl -sG "$API_URL" \
+        local fetched_json
+        fetched_json=$(curl -sG "$API_URL" \
             --data-urlencode "q=mediatype:collection" \
             --data-urlencode "fl[]=identifier" \
             --data-urlencode "fl[]=title" \
@@ -32,14 +86,30 @@ show_collections() {
             --data-urlencode "sort[]=downloads desc" \
             --data-urlencode "rows=500" \
             --data-urlencode "output=json")
+        
+        if [ $? -ne 0 ] || [ -z "$fetched_json" ]; then
+            echo "❌ Error: Failed to fetch collections from the Internet Archive."
+            return 1
+        fi
+
+        if ! echo "$fetched_json" | jq -e . >/dev/null 2>&1; then
+            echo "❌ Error: Corrupt response received from the API."
+            return 1
+        fi
+        
+        json="$fetched_json" # Update parent scope variable
         echo "$json" > "$CACHE_FILE"
+        return 0
     }
 
     if [ -f "$CACHE_FILE" ] && [ $(( $(date +%s) - $(stat -c %Y "$CACHE_FILE") )) -lt $CACHE_EXPIRY ]; then
         echo "📚 Loading collections from cache..."
         json=$(cat "$CACHE_FILE")
     else
-        fetch_collections
+        if ! fetch_collections; then
+            echo "👋 Exiting due to network error."
+            exit 1
+        fi
     fi
 
     mapfile -t all_entries < <(echo "$json" | jq -r '.response.docs[] | "\(.title) [\(.identifier)]"')
@@ -138,7 +208,7 @@ open_item() {
     action=$(echo -e "$action_label\n⬇️ Download" | fzf --prompt="🎬 Choose action for $filename > " --height=100% --reverse --border)
     [ -z "$action" ] && echo "🚫 No action selected." && return
 
-    filename_encoded=$(echo "$filename" | sed 's/ /%20/g')
+    filename_encoded=$(urlencode "$filename")
     url="https://archive.org/download/$identifier/$filename_encoded"
 
     if [ "$action" == "▶️ Play" ] || [ "$action" == "📂 Open" ]; then
@@ -153,7 +223,7 @@ open_item() {
                 mpv_log=$(mktemp)
 
                 if [ -n "$sub_file" ]; then
-                    sub_encoded=$(echo "$sub_file" | sed 's/ /%20/g')
+                    sub_encoded=$(urlencode "$sub_file")
                     sub_url="https://archive.org/download/$identifier/$sub_encoded"
                     # Redirect stderr/stdout to log file so we can grep it
                     $VIDEO_PLAYER "$url" --sub-file="$sub_url" > "$mpv_log" 2>&1 &
@@ -188,13 +258,9 @@ open_item() {
                 echo "🎧 Playing audio..."
                 $AUDIO_PLAYER "$url" >/dev/null 2>&1 & ;;
             *.png|*.jpg|*.jpeg|*.gif|*.bmp)
-                temp_file=$(mktemp)
-                curl -sL "$url" | pv > "$temp_file"
-                [ -s "$temp_file" ] && ($IMAGE_VIEWER "$temp_file" >/dev/null 2>&1; rm "$temp_file") & ;;
+                download_and_view "$url" "$IMAGE_VIEWER" ;;
             *.pdf)
-                temp_file=$(mktemp)
-                curl -sL "$url" | pv > "$temp_file"
-                [ -s "$temp_file" ] && ($PDF_VIEWER "$temp_file" >/dev/null 2>&1; rm "$temp_file") & ;;
+                download_and_view "$url" "$PDF_VIEWER" ;;
             *.txt|*.md|*.rst|*.csv|*.log|*.tex|*.sh|*.py|*.c|*.cpp|*.h|*.java|*.js|*.ts|*.json|*.xml|*.yaml|*.yml|*.ini|*.conf|*.cfg)
                 temp_file=$(mktemp)
                 curl -sL "$url" -o "$temp_file"
@@ -220,6 +286,7 @@ open_item() {
 }
 
 # --- Main ---
+check_deps
 show_collections
 echo "👋 Goodbye."
 exit 0
