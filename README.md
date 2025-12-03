@@ -59,8 +59,8 @@ To use Python-based tools:
 source .venv/bin/activate
 ```
 
-### 🧩 Optional Viewer Config
-=======
+---
+
 ### 🧩 Viewer Configuration
 
 You can easily change the default media players by editing the variables at the top of the script:
