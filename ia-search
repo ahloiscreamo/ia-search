@@ -17,6 +17,9 @@ CACHE_FILE="$HOME/.cache/ia-search-collections.json"
 mkdir -p "$(dirname "$CACHE_FILE")"
 CACHE_EXPIRY=$((60*60*24))  # 24 hours
 
+
+
+
 # --- Dependency Check ---
 check_deps() {
     local missing=0
@@ -70,6 +73,7 @@ urlencode() {
     echo "${encoded}"
 }
 
+# --- Show Collections ---
 # --- Show Collections ---
 show_collections() {
     local PAGE_SIZE=50
@@ -147,8 +151,7 @@ show_collections() {
             "[➡️ Next page]")
                 ((page++))
                 if [ $page -ge $total_pages ]; then
-                    echo "⚠️  No more pages."
-                    ((page--))
+                    page=$((total_pages - 1))
                 fi
                 ;;
             "[❌ Exit]"|"")
@@ -165,19 +168,112 @@ show_collections() {
 
 # --- Search Mode ---
 search_mode() {
-    local query identifier
+    local query identifier_or_action page rows item_list
+    local -a choices items
 
     while true; do
         query=$(printf '' | fzf --prompt="🔍 Type search query (ESC to return to main) > " --print-query --height=10 --reverse --border | head -n1)
         [ -z "$query" ] && return 0
 
+        page=1
+        rows=30
+
         while true; do
-            echo "🔎 Searching for \"$query\" ..."
-            identifier=$(ia search "$query" --itemlist | fzf --prompt="🎥 Select an item from '$query' (ESC to new search) > " --height=100% --reverse --border)
-            if [ -z "$identifier" ]; then
+            echo "🔎 Searching for \"$query\" (Page $page)..."
+            
+            item_list=$(ia search "$query" --itemlist -p "page:$page" -p "rows:$rows")
+            mapfile -t items < <(echo "$item_list")
+
+            # Build choices array
+            choices=()
+            
+            # Add navigation/action options first
+            if [ "${#items[@]}" -eq "$rows" ]; then
+                choices+=("[➡️ Next page]")
+            fi
+            if [ "$page" -gt 1 ]; then
+                 choices+=("[⬅️ Previous page]")
+            fi
+            choices+=("[🔍 Search all results]")
+
+            # Add a blank line for spacing if there are any navigation options
+            if [ "${#choices[@]}" -gt 0 ]; then
+                choices+=("")
+            fi
+
+            # Add actual items
+            choices+=("${items[@]}")
+
+            identifier_or_action=$(printf '%s\n' "${choices[@]}" | fzf \
+                --prompt="🎥 Select item from '$query' (Page $page) (ESC to new search) > " \
+                --height=100% \
+                --reverse \
+                --border \
+                --preview-window=right:30% \
+                --preview 'bash -c '\''
+                    if [ -z "$1" ] || [ "$1" = "[➡️ Next page]" ] || [ "$1" = "[⬅️ Previous page]" ] || [ "$1" = "[🔍 Search all results]" ]; then
+                        echo ""
+                    else
+                        ia list "$1" | head -n 20
+                    fi
+                '\'' bash {}')
+
+            if [ -z "$identifier_or_action" ]; then
                 break
             fi
-            open_item "$identifier"
+
+            case "$identifier_or_action" in
+                "[➡️ Next page]")
+                    ((page++))
+                    ;;
+                "[⬅️ Previous page]")
+                    if [ "$page" -gt 1 ]; then
+                        ((page--))
+                    fi
+                    ;;
+                "[🔍 Search all results]")
+                    local sub_query_text
+                    sub_query_text=$(printf '' | fzf --prompt="🔎 Search within results for '$query': " --print-query --height=10 --reverse --border | head -n1)
+                    [ -z "$sub_query_text" ] && continue # If user escapes sub-search, continue in current page
+
+                    echo "🔎 Searching for \"$query AND $sub_query_text\"..."
+                    local combined_query="$query AND $sub_query_text"
+
+                    # Get total hits for the combined query
+                    local total_combined_hits
+                    total_combined_hits=$(ia search "$combined_query" --num-found)
+
+                    if [ -z "$total_combined_hits" ] || [ "$total_combined_hits" -eq 0 ]; then
+                        echo "🚫 No results found for \"$combined_query\"."
+                        continue
+                    fi
+
+                    echo "🔎 Loading all $total_combined_hits results for \"$combined_query\"..."
+                    
+                    local temp_combined_file
+                    temp_combined_file=$(mktemp)
+                    (ia search "$combined_query" --itemlist | pv -l -s "$total_combined_hits" -N "Loading combined" > "$temp_combined_file")
+                    
+                    local selected_identifier
+                    selected_identifier=$(cat "$temp_combined_file" | fzf \
+                        --prompt="🎥 Results for '$combined_query' > " \
+                        --height=100% \
+                        --reverse \
+                        --border \
+                        --preview-window=right:30% \
+                        --preview 'bash -c '\''ia list "$1" | head -n 20'\'' bash {}')
+                    
+                    rm "$temp_combined_file"
+
+                    if [ -n "$selected_identifier" ]; then
+                        open_item "$selected_identifier"
+                    fi
+                    break # Exit current pagination loop after sub-search
+                    ;;
+                *)
+                    open_item "$identifier_or_action"
+                    ;;
+            esac
         done
     done
 }
@@ -185,10 +281,110 @@ search_mode() {
 # --- Browse Collection ---
 browse_collection() {
     local coll="$1"
-    echo "📁 Browsing collection: $coll"
-    identifier=$(ia search "collection:$coll" --itemlist | fzf --prompt="🎞️ Select item from $coll > " --height=100% --reverse --border)
-    [ -z "$identifier" ] && echo "🚫 No item selected." && return
-    open_item "$identifier"
+    local identifier_or_action page rows item_list
+    local -a choices items
+    
+    page=1
+    rows=30
+
+    while true; do
+        echo "📁 Browsing collection: $coll (Page $page)..."
+
+        item_list=$(ia search "collection:$coll" --itemlist -p "page:$page" -p "rows:$rows")
+        mapfile -t items < <(echo "$item_list")
+
+        # Build choices array
+        choices=()
+        
+        # Add navigation/action options first
+        if [ "${#items[@]}" -eq "$rows" ]; then
+            choices+=("[➡️ Next page]")
+        fi
+        if [ "$page" -gt 1 ]; then
+            choices+=("[⬅️ Previous page]")
+        fi
+        choices+=("[🔍 Search all results]")
+
+        # Add a blank line for spacing if there are any navigation options
+        if [ "${#choices[@]}" -gt 0 ]; then
+            choices+=("")
+        fi
+
+        # Add actual items
+        choices+=("${items[@]}")
+
+        identifier_or_action=$(printf '%s\n' "${choices[@]}" | fzf \
+            --prompt="🎞️ Select item from $coll (Page $page) > " \
+            --height=100% \
+            --reverse \
+            --border \
+            --preview-window=right:30% \
+            --preview 'bash -c '\''
+                if [ -z "$1" ] || [ "$1" = "[➡️ Next page]" ] || [ "$1" = "[⬅️ Previous page]" ] || [ "$1" = "[🔍 Search all results]" ]; then
+                    echo ""
+                else
+                    ia list "$1" | head -n 20
+                fi
+            '\'' bash {}')
+
+        if [ -z "$identifier_or_action" ]; then
+            return
+        fi
+
+        case "$identifier_or_action" in
+            "[➡️ Next page]")
+                ((page++))
+                ;;
+            "[⬅️ Previous page]")
+                if [ "$page" -gt 1 ]; then
+                    ((page--))
+                fi
+                ;;
+            "[🔍 Search all results]")
+                local sub_query_text
+                sub_query_text=$(printf '' | fzf --prompt="🔎 Search within collection '$coll': " --print-query --height=10 --reverse --border | head -n1)
+                [ -z "$sub_query_text" ] && continue # If user escapes sub-search, continue in current page
+
+                echo "🔎 Searching for \"collection:$coll AND $sub_query_text\"..."
+                local combined_query="collection:$coll AND $sub_query_text"
+
+                # Get total hits for the combined query
+                local total_combined_hits
+                total_combined_hits=$(ia search "$combined_query" --num-found)
+
+                if [ -z "$total_combined_hits" ] || [ "$total_combined_hits" -eq 0 ]; then
+                    echo "🚫 No results found for \"$combined_query\"."
+                    continue
+                fi
+
+                echo "🔎 Loading all $total_combined_hits results for \"$combined_query\"..."
+                
+                local temp_combined_file
+                temp_combined_file=$(mktemp)
+                (ia search "$combined_query" --itemlist | pv -l -s "$total_combined_hits" -N "Loading combined" > "$temp_combined_file")
+                
+                local selected_identifier
+                selected_identifier=$(cat "$temp_combined_file" | fzf \
+                    --prompt="🎥 Results for '$combined_query' > " \
+                    --height=100% \
+                    --reverse \
+                    --border \
+                    --preview-window=right:30% \
+                    --preview 'bash -c '\''ia list "$1" | head -n 20'\'' bash {}')
+                
+                rm "$temp_combined_file"
+
+                if [ -n "$selected_identifier" ]; then
+                    open_item "$selected_identifier"
+                    return
+                fi
+                ;;
+            *)
+                open_item "$identifier_or_action"
+                return
+                ;;
+        esac
+    done
 }
 
 # --- Open / Play / Download Item ---
@@ -217,7 +413,7 @@ open_item() {
                 echo "🎞️ Playing video..."
                 video_basename=$(echo "$filename" | sed 's/\.[^.]*$//')
                 
-                sub_file=$(echo "$file_list" | grep -Fx -e "${video_basename}.srt" -e "${video_basename}.ass" | head -n1)
+                sub_file=$(echo "$file_list" | grep -E "^${video_basename//./\\.}.*\\.(srt|ass)$" | head -n1)
 
                 # Create a temporary log file to monitor mpv status
                 mpv_log=$(mktemp)

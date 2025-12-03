@@ -1,59 +1,44 @@
-## 🎬 ia-search
+# 🎬 ia-search
 
-**ia-search** is an interactive terminal browser and downloader for the **Internet Archive**, powered by `fzf` and `ia-cli`.  
-It lets you **browse**, **search**, **play**, and **download** media directly from your terminal — no web browser needed.
+**ia-search** is an interactive terminal browser and downloader for the **Internet Archive**, powered by `fzf` and `ia`. It lets you **browse**, **search**, **play**, and **download** media directly from your terminal.
 
-Now features a **Smart Launch Monitor** that intelligently manages the transition between the terminal and your media player.
-
----
-
-## 🖼️ Screenshots
-
-<img width="1276" height="998" alt="Screenshot from 2025-11-02 20-58-55" src="https://github.com/user-attachments/assets/cacb3f1e-aac3-4214-a8a2-031470428da8" />
-<p align="center"><i>🏁 Main menu showing cached top collections</i></p>
-
-<img width="1180" height="974" alt="Screenshot from 2025-11-02 21-06-32" src="https://github.com/user-attachments/assets/e5881379-b20f-466b-a5cb-8e828cc5bb2e" />
-<p align="center"><i>🔍 Searching across all Internet Archive collections</i></p>
-
-<img width="1180" height="974" alt="Screenshot from 2025-11-02 21-07-18" src="https://github.com/user-attachments/assets/9846adb8-98fb-4e47-a9f1-0a5f616803ac" />
-<p align="center"><i>🎥 Selecting an item result with fuzzy finder</i></p>
-
-<img width="1180" height="974" alt="Screenshot from 2025-11-02 21-09-37" src="https://github.com/user-attachments/assets/f0d4bf5c-2cce-459a-be77-7aa4ce7d5954" />
-<p align="center"><i>📂 Browsing files within a selected Internet Archive item</i></p>
-
-<img width="1180" height="974" alt="Screenshot from 2025-11-02 21-10-06" src="https://github.com/user-attachments/assets/5debd339-c35d-4d16-a929-57482059d4c0" />
-<p align="center"><i>🎬 Choosing to play or download the file</i></p>
+This script is designed to be compatible with older versions of `fzf` and various user shells (`bash`, `fish`, etc.) by using portable commands.
 
 ---
 
 ## ✨ Features
 
-- 🧭 **Interactive collection browser** with pagination & local cache  
-- 🚀 **Smart Launch Monitor** — Automatically detects when `mpv` has successfully initialized video/audio before returning to the menu (prevents premature switching).
-- 🛡️ **Robust Filename Support** — Safely handles complex filenames (e.g., Anime release groups with `[]`, `()` symbols).
-- 🔍 **Search across all collections** with fuzzy finder (`fzf`)  
-- 🎥 **Play videos** & 🎧 **listen to audio** with `mpv`  
-- 🖼️ **View images** instantly using `nsxiv`  
-- 📄 **Open PDFs** seamlessly with `zathura`  
-- ⬇️ **Download** any file directly from Internet Archive  
-- 💬 **Subtitle auto-detection** for `.srt` / `.ass` files  
-- 🧹 **Temp cleanup** after image/PDF viewing  
+-   **Interactive Collection Browser**: Starts with a list of the top 500 most-downloaded collections, with pagination.
+-   **Efficient Sub-Searching**: Instead of loading huge lists, the `[🔍 Search all results]` option lets you perform a targeted search within a large collection or broad query.
+-   **Paginated Results**: Both `search` and `browse` modes display results in pages of 30 items for faster loading and navigation.
+-   **Loading Progress Bar**: When using `[🔍 Search all results]`, a progress bar shows the status of loading the item list.
+-   **Live Item Preview**: While browsing items, a preview window on the right shows the first 20 files within the selected item.
+-   **Multi-format Media Player**:
+    -   🎥 Play videos & 🎧 listen to audio with `mpv`.
+    -   🖼️ View images with `nsxiv`.
+    -   📄 Open PDFs with `zathura`.
+-   **Downloader Integration**: Download video files with `yt-dlp` or other files with `curl`.
+-   **Robust and Portable**:
+    -   Designed to work even with very old versions of `fzf`.
+    -   Preview commands are wrapped to ensure compatibility with different user shells (like `fish`).
+    -   Correctly handles filenames with spaces or special characters.
 
 ---
 
 ## ⚙️ Dependencies
 
-| Tool | Purpose |
-|------|----------|
-| [`ia`](https://archive.org/services/docs/api/internetarchive/cli.html) | Internet Archive CLI (Core search/list) |
-| [`fzf`](https://github.com/junegunn/fzf) | Fuzzy finder UI |
-| [`jq`](https://jqlang.github.io/jq/) | Parsing API JSON responses |
-| [`mpv`](https://mpv.io/) | Video & audio player |
-| [`nsxiv`](https://github.com/nsxiv/nsxiv) | Image viewer |
-| [`zathura`](https://pwmt.org/projects/zathura/) | PDF viewer |
-| [`yt-dlp`](https://github.com/yt-dlp/yt-dlp) | Downloader for videos |
-| [`curl`](https://curl.se/) | File downloader / API fetcher |
-| [`pv`](https://www.ivarch.com/programs/pv.shtml) | Progress bar for launch monitoring |
+| Tool                                                                         | Purpose                                   |
+| ---------------------------------------------------------------------------- | ----------------------------------------- |
+| [`ia`](https://archive.org/services/docs/api/internetarchive/cli.html)       | Internet Archive CLI (Core search/list)   |
+| [`fzf`](https://github.com/junegunn/fzf)                                     | Fuzzy finder UI                           |
+| [`jq`](https://jqlang.github.io/jq/)                                         | Parsing API JSON responses                |
+| [`pv`](https://www.ivarch.com/programs/pv.shtml)                             | Progress bar for loading search results   |
+| [`mpv`](https://mpv.io/)                                                     | Video & audio player                      |
+| [`nsxiv`](https://github.com/nsxiv/nsxiv) or other image viewer              | Image viewer                              |
+| [`zathura`](https://pwmt.org/projects/zathura/) or other PDF viewer          | PDF viewer                                |
+| [`yt-dlp`](https://github.com/yt-dlp/yt-dlp)                                 | Downloader for videos                     |
+| [`curl`](https://curl.se/)                                                   | File downloader / API fetcher             |
+
 
 ### Ubuntu dependencies
 This project includes an Ubuntu installer that sets up all required tools.
@@ -75,96 +60,70 @@ source .venv/bin/activate
 ```
 
 ### 🧩 Optional Viewer Config
+=======
+### 🧩 Viewer Configuration
 
-You can replace defaults easily in the script variables:
-```bash
-VIDEO_PLAYER="mpv"
-AUDIO_PLAYER="mpv"
-IMAGE_VIEWER="nsxiv"
-PDF_VIEWER="zathura"
-VIDEO_DOWNLOADER="yt-dlp"
-````
+You can easily change the default media players by editing the variables at the top of the script:
 
------
+`VIDEO_PLAYER="mpv"`
+`AUDIO_PLAYER="mpv"`
+`IMAGE_VIEWER="nsxiv"`
+`PDF_VIEWER="zathura"`
+`VIDEO_DOWNLOADER="yt-dlp"`
+
+---
 
 ## 🔧 Installation
 
-1.  Clone the repository:
+1.  Make sure you have all the dependencies installed.
+2.  Save the script as `ia-search` in a directory in your `$PATH` (e.g., `~/.local/bin/`).
+3.  Make it executable: `chmod +x ~/.local/bin/ia-search`
+4.  Run it from anywhere: `ia-search`
 
-    ```bash
-    git clone [https://github.com/ahloiscreamo/ia-search.git](https://github.com/ahloiscreamo/ia-search.git)
-    cd ia-search
-    ```
+---
 
-2.  Make it executable:
+## 🧭 Usage
 
-    ```bash
-    chmod +x ia-search
-    ```
+### Main Menu
 
-3.  (Optional) Move it to your `$PATH`:
+The script starts by showing a paginated list of the top 500 collections on the Internet Archive.
 
-    ```bash
-    sudo mv ia-search /usr/local/bin/
-    ```
+-   **Select a collection** to browse its items.
+-   **`[🔍 Search all collections]`**: Opens a prompt to search the entire Internet Archive.
+-   **`[🔄 Refresh cache]`**: Fetches the latest top 500 collections.
+-   **`[➡️ Next page]` / `[⬅️ Previous page]`**: Navigate through the pages of collections.
 
-4.  Run it:
+### Browsing & Searching (Paginated View)
 
-    ```bash
-    ia-search
-    ```
+Whether you are browsing a collection or searching, the results are displayed in pages of 30.
 
------
+-   **Select an item** to see its files and choose an action (play, download, etc.).
+-   **`[➡️ Next page]` / `[⬅️ Previous page]`**: Navigate through the pages of items.
+-   **`[🔍 Search all results]`**: This is the efficient way to find something in a very large list.
+    1.  Select this option.
+    2.  A new prompt will appear, allowing you to type a search term.
+    3.  The script will perform a new, targeted search on the server, combining your original context (e.g., the collection) with your new search term.
+    4.  A progress bar will show the loading of these new results.
 
-## 🧭 Navigation Overview
-
-```
-📚 Top Collections (cached)
- ├── [🔍 Search all collections]
- ├── [🔄 Refresh cache]
- ├── [➡️ Next page]
- └── [❌ Exit]
-```
-
-### 🔍 Search Mode
-
-  * Type a query → see instant results
-  * Press `ESC` → return to query input
-  * Press `ESC` again → return to main collections
-
-### 🚀 Smart Launch Behavior
-
-When you select a video to play, the script pauses the interface and monitors `mpv`'s internal logs. It will only return you to the search list once it confirms the video window is actually open (`VO:`) or audio is playing (`AO:`).
-
------
+---
 
 ## 🧠 Example Queries
 
-Search for Japanese movies:
+When using the `[🔍 Search all collections]` option, you can use advanced Internet Archive search queries.
 
-```bash
-mediatype:movies AND language:japanese
-```
+Search for Japanese movies:
+`mediatype:movies AND language:japanese`
 
 Public domain audio:
-
-```bash
-mediatype:audio AND subject:publicdomain
-```
+`mediatype:audio AND subject:publicdomain`
 
 Scanned art books:
-
-```bash
-mediatype:image AND subject:art
-```
+`mediatype:image AND subject:art`
 
 Animation PDFs:
+`mediatype:texts AND subject:animation`
 
-```bash
-mediatype:texts AND subject:animation
-```
-
------
+---
 
 ## 📜 Common Search Fields
 
@@ -177,20 +136,4 @@ mediatype:texts AND subject:animation
 | `language`   | `language:japanese`     | Filter by language        |
 | `year`       | `year:1990`             | Filter by year            |
 | `collection` | `collection:anime`      | Specific IA collection    |
-
------
-
-## 🧰 Example Flow
-
-```
-📚 Loading collections from cache...
-🔍 Type search query (ESC to return to main) > mediatype:movies AND subject:japan
-🔎 Searching for "mediatype:movies AND subject:japan" ...
-📂 Fetching file list for: tokyo-streets-1990 ...
-🎬 Choose action for file > ▶️ Play
-🎞️ Playing video...
-🚀 Launching mpv: 0:00:02 [========>                      ]
-(Returns to menu only after player confirms launch)
-```
-
------
+| `uploader`   | `uploader:xx@gmail.com` | Search by uploader        |
