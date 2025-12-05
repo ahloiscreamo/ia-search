@@ -74,7 +74,6 @@ urlencode() {
 }
 
 # --- Show Collections ---
-# --- Show Collections ---
 show_collections() {
     local PAGE_SIZE=50
     local page=0
@@ -168,8 +167,21 @@ show_collections() {
 
 # --- Search Mode ---
 search_mode() {
-    local query identifier_or_action page rows item_list
+    local query identifier_or_action page rows item_json selected_line
     local -a choices items
+
+    # This preview command now includes the original's simple check for an empty line.
+    local preview_command='bash -c '\''
+        item_text="$1"
+        # If the line is empty, do nothing (this handles the gap/space)
+        if [ -z "$item_text" ]; then
+            :
+        elif [[ "$item_text" == "["* && "$item_text" == *"]"* ]]; then
+            echo "Navigate with Enter. No item preview for options."
+        else
+            ia list "$item_text" | head -n 20
+        fi
+    '\'' _ {1}'
 
     while true; do
         query=$(printf '' | fzf --prompt="🔍 Type search query (ESC to return to main) > " --print-query --height=10 --reverse --border | head -n1)
@@ -181,42 +193,44 @@ search_mode() {
         while true; do
             echo "🔎 Searching for \"$query\" (Page $page)..."
             
-            item_list=$(ia search "$query" --itemlist -p "page:$page" -p "rows:$rows")
-            mapfile -t items < <(echo "$item_list")
+            item_json=$(ia search "$query" --field identifier --field title --sort="downloads desc" -p "page:$page" -p "rows:$rows")
+            if [ -z "$item_json" ]; then
+                echo "🚫 No results found for page $page."
+                if [ "$page" -eq 1 ]; then break; fi
+            fi
+            
+            # Format as: identifier<TAB>title
+            mapfile -t items < <(echo "$item_json" | jq -s -r '.[] | "\(.identifier)\t\(.title)"')
 
-            # Build choices array
+            # Build choices with uniform ID<TAB>TEXT format
             choices=()
             
-            # Add navigation/action options first
             if [ "${#items[@]}" -eq "$rows" ]; then
-                choices+=("[➡️ Next page]")
+                choices+=("[➡️ Next page]	[➡️ Next page]")
             fi
             if [ "$page" -gt 1 ]; then
-                 choices+=("[⬅️ Previous page]")
+                 choices+=("[⬅️ Previous page]	[⬅️ Previous page]")
             fi
-            choices+=("[🔍 Search all results]")
+            choices+=("[🔍 Search all results]	[🔍 Search all results]")
 
-            # Add a blank line for spacing if there are any navigation options
+            # Use a simple empty string for the gap, like the original script
             if [ "${#choices[@]}" -gt 0 ]; then
                 choices+=("")
             fi
 
-            # Add actual items
             choices+=("${items[@]}")
 
-            identifier_or_action=$(printf '%s\n' "${choices[@]}" | fzf \
-                --prompt="🎥 Select item from '$query' (Page $page) (ESC to new search) > " \
+            selected_line=$(printf '%s\n' "${choices[@]}" | fzf \
+                --prompt="🎥 Select title from '$query' (Page $page) > " \
                 --height=100% \
                 --reverse \
                 --border \
-                --preview-window=right:30% \
-                --preview 'bash -c '\''
-                    if [ -z "$1" ] || [ "$1" = "[➡️ Next page]" ] || [ "$1" = "[⬅️ Previous page]" ] || [ "$1" = "[🔍 Search all results]" ]; then
-                        echo ""
-                    else
-                        ia list "$1" | head -n 20
-                    fi
-                '\'' bash {}')
+                --delimiter=$'\t' \
+                --with-nth=2.. \
+                --preview-window=right:40% \
+                --preview "$preview_command")
+            
+            identifier_or_action=$(echo "$selected_line" | awk -F'\t' '{print $1}')
 
             if [ -z "$identifier_or_action" ]; then
                 break
@@ -234,12 +248,10 @@ search_mode() {
                 "[🔍 Search all results]")
                     local sub_query_text
                     sub_query_text=$(printf '' | fzf --prompt="🔎 Search within results for '$query': " --print-query --height=10 --reverse --border | head -n1)
-                    [ -z "$sub_query_text" ] && continue # If user escapes sub-search, continue in current page
+                    [ -z "$sub_query_text" ] && continue
 
                     echo "🔎 Searching for \"$query AND $sub_query_text\"..."
                     local combined_query="$query AND $sub_query_text"
-
-                    # Get total hits for the combined query
                     local total_combined_hits
                     total_combined_hits=$(ia search "$combined_query" --num-found)
 
@@ -252,23 +264,27 @@ search_mode() {
                     
                     local temp_combined_file
                     temp_combined_file=$(mktemp)
-                    (ia search "$combined_query" --itemlist | pv -l -s "$total_combined_hits" -N "Loading combined" > "$temp_combined_file")
+                    (ia search "$combined_query" --field identifier --field title | pv -l -s "$total_combined_hits" -N "Loading combined" > "$temp_combined_file")
                     
-                    local selected_identifier
-                    selected_identifier=$(cat "$temp_combined_file" | fzf \
+                    local selected_sub_item_line
+                    selected_sub_item_line=$(cat "$temp_combined_file" | jq -s -r '.[] | "\(.identifier)\t\(.title)"' | fzf \
                         --prompt="🎥 Results for '$combined_query' > " \
                         --height=100% \
                         --reverse \
                         --border \
-                        --preview-window=right:30% \
-                        --preview 'bash -c '\''ia list "$1" | head -n 20'\'' bash {}')
+                        --delimiter=$'\t' \
+                        --with-nth=2.. \
+                        --preview-window=right:40% \
+                        --preview "$preview_command")
                     
                     rm "$temp_combined_file"
 
-                    if [ -n "$selected_identifier" ]; then
-                        open_item "$selected_identifier"
+                    if [ -n "$selected_sub_item_line" ]; then
+                        local final_identifier
+                        final_identifier=$(echo "$selected_sub_item_line" | awk 'BEGIN{FS="\t"} {print $1}')
+                        open_item "$final_identifier"
                     fi
-                    break # Exit current pagination loop after sub-search
+                    break
                     ;;
                 *)
                     open_item "$identifier_or_action"
@@ -281,51 +297,65 @@ search_mode() {
 # --- Browse Collection ---
 browse_collection() {
     local coll="$1"
-    local identifier_or_action page rows item_list
+    local identifier_or_action page rows item_json selected_line
     local -a choices items
     
+    # This preview command now includes the original's simple check for an empty line.
+    local preview_command='bash -c '\''
+        item_text="$1"
+        # If the line is empty, do nothing (this handles the gap/space)
+        if [ -z "$item_text" ]; then
+            :
+        elif [[ "$item_text" == "["* && "$item_text" == *"]"* ]]; then
+            echo "Navigate with Enter. No item preview for options."
+        else
+            ia list "$item_text" | head -n 20
+        fi
+    '\'' _ {1}'
+
     page=1
     rows=30
 
     while true; do
         echo "📁 Browsing collection: $coll (Page $page)..."
 
-        item_list=$(ia search "collection:$coll" --itemlist -p "page:$page" -p "rows:$rows")
-        mapfile -t items < <(echo "$item_list")
+        item_json=$(ia search "collection:$coll" --field identifier --field title --sort="downloads desc" -p "page:$page" -p "rows:$rows")
+        if [ -z "$item_json" ]; then
+            echo "🚫 No results found for page $page."
+            if [ "$page" -eq 1 ]; then break; fi
+        fi
 
-        # Build choices array
+        mapfile -t items < <(echo "$item_json" | jq -s -r '.[] | "\(.identifier)\t\(.title)"')
+
+        # Build choices with uniform ID<TAB>TEXT format
         choices=()
         
-        # Add navigation/action options first
         if [ "${#items[@]}" -eq "$rows" ]; then
-            choices+=("[➡️ Next page]")
+            choices+=("[➡️ Next page]	[➡️ Next page]")
         fi
         if [ "$page" -gt 1 ]; then
-            choices+=("[⬅️ Previous page]")
+            choices+=("[⬅️ Previous page]	[⬅️ Previous page]")
         fi
-        choices+=("[🔍 Search all results]")
+        choices+=("[🔍 Search all results]	[🔍 Search all results]")
 
-        # Add a blank line for spacing if there are any navigation options
+        # Use a simple empty string for the gap, like the original script
         if [ "${#choices[@]}" -gt 0 ]; then
             choices+=("")
         fi
 
-        # Add actual items
         choices+=("${items[@]}")
 
-        identifier_or_action=$(printf '%s\n' "${choices[@]}" | fzf \
-            --prompt="🎞️ Select item from $coll (Page $page) > " \
+        selected_line=$(printf '%s\n' "${choices[@]}" | fzf \
+            --prompt="🎞️ Select title from $coll (Page $page) > " \
             --height=100% \
             --reverse \
             --border \
-            --preview-window=right:30% \
-            --preview 'bash -c '\''
-                if [ -z "$1" ] || [ "$1" = "[➡️ Next page]" ] || [ "$1" = "[⬅️ Previous page]" ] || [ "$1" = "[🔍 Search all results]" ]; then
-                    echo ""
-                else
-                    ia list "$1" | head -n 20
-                fi
-            '\'' bash {}')
+            --delimiter=$'\t' \
+            --with-nth=2.. \
+            --preview-window=right:40% \
+            --preview "$preview_command")
+
+        identifier_or_action=$(echo "$selected_line" | awk -F'\t' '{print $1}')
 
         if [ -z "$identifier_or_action" ]; then
             return
@@ -343,12 +373,10 @@ browse_collection() {
             "[🔍 Search all results]")
                 local sub_query_text
                 sub_query_text=$(printf '' | fzf --prompt="🔎 Search within collection '$coll': " --print-query --height=10 --reverse --border | head -n1)
-                [ -z "$sub_query_text" ] && continue # If user escapes sub-search, continue in current page
+                [ -z "$sub_query_text" ] && continue
 
                 echo "🔎 Searching for \"collection:$coll AND $sub_query_text\"..."
                 local combined_query="collection:$coll AND $sub_query_text"
-
-                # Get total hits for the combined query
                 local total_combined_hits
                 total_combined_hits=$(ia search "$combined_query" --num-found)
 
@@ -361,23 +389,30 @@ browse_collection() {
                 
                 local temp_combined_file
                 temp_combined_file=$(mktemp)
-                (ia search "$combined_query" --itemlist | pv -l -s "$total_combined_hits" -N "Loading combined" > "$temp_combined_file")
+                (ia search "$combined_query" --field identifier --field title | pv -l -s "$total_combined_hits" -N "Loading combined" > "$temp_combined_file")
                 
-                local selected_identifier
-                selected_identifier=$(cat "$temp_combined_file" | fzf \
-                    --prompt="🎥 Results for '$combined_query' > " \
-                    --height=100% \
-                    --reverse \
-                    --border \
-                    --preview-window=right:30% \
-                    --preview 'bash -c '\''ia list "$1" | head -n 20'\'' bash {}')
+                local selected_sub_item_line
+                selected_sub_item_line=$(cat "$temp_combined_file" | jq -s -r '.[] | "\(.identifier)\t\(.title)"' | fzf \
+                        --prompt="🎥 Results for '$combined_query' > " \
+                        --height=100% \
+                        --reverse \
+                        --border \
+                        --delimiter=$'\t' \
+                        --with-nth=2.. \
+                        --preview-window=right:40% \
+                        --preview "$preview_command")
                 
                 rm "$temp_combined_file"
 
-                if [ -n "$selected_identifier" ]; then
-                    open_item "$selected_identifier"
-                    return
+                if [ -n "$selected_sub_item_line" ]; then
+                    local final_identifier
+                    final_identifier=$(echo "$selected_sub_item_line" | awk 'BEGIN{FS="\t"} {print $1}')
+                    open_item "$final_identifier"
                 fi
+                return
+                ;;
+            " ")
+                # This is the blank line, do nothing.
                 ;;
             *)
                 open_item "$identifier_or_action"
