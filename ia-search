@@ -9,6 +9,57 @@ IMAGE_VIEWER="nsxiv"
 PDF_VIEWER="zathura"
 VIDEO_DOWNLOADER="yt-dlp"
 
+# --- Icon Config ---
+# Set to "true" to use Nerd Font icons, "false" for standard emojis.
+USE_NERD_ICONS="true"
+
+if [ "$USE_NERD_ICONS" = "true" ]; then
+    # Nerd Font Icons
+    ICON_SEARCH=""
+    ICON_REFRESH=""
+    ICON_NEXT=""
+    ICON_PREV=""
+    ICON_EXIT=""
+    ICON_PLAY=""
+    ICON_OPEN=""
+    ICON_DOWNLOAD=""
+    ICON_PROMPT_COLLECTION=""
+    ICON_PROMPT_TITLE=""
+    ICON_PROMPT_FILE=""
+    ICON_PROMPT_ACTION=""
+else
+    # Emoji Fallbacks
+    ICON_SEARCH="🔍"
+    ICON_REFRESH="🔄"
+    ICON_NEXT="➡️"
+    ICON_PREV="⬅️"
+    ICON_EXIT="❌"
+    ICON_PLAY="▶️"
+    ICON_OPEN="📂"
+    ICON_DOWNLOAD="⬇️"
+    ICON_PROMPT_COLLECTION="📂"
+    ICON_PROMPT_TITLE="🎥"
+    ICON_PROMPT_FILE="📁"
+    ICON_PROMPT_ACTION="🎬"
+fi
+
+# --- Color Config ---
+# Set to "true" to enable colors in the output.
+USE_COLORS="true"
+if [ "$USE_COLORS" = "true" ]; then
+    RED=$(tput setaf 1)
+    GREEN=$(tput setaf 2)
+    YELLOW=$(tput setaf 3)
+    BLUE=$(tput setaf 4)
+    MAGENTA=$(tput setaf 5)
+    CYAN=$(tput setaf 6)
+    WHITE=$(tput setaf 7)
+    BOLD=$(tput bold)
+    RESET=$(tput sgr0)
+fi
+
+
+
 # --- API Config ---
 API_URL="https://archive.org/advancedsearch.php"
 
@@ -79,7 +130,7 @@ show_collections() {
     local page=0
 
     fetch_collections() {
-        echo "📚 Fetching top collections from Internet Archive..."
+        echo "${ICON_PROMPT_COLLECTION} Fetching top collections from Internet Archive..."
         local fetched_json
         fetched_json=$(curl -sG "$API_URL" \
             --data-urlencode "q=mediatype:collection" \
@@ -106,7 +157,7 @@ show_collections() {
     }
 
     if [ -f "$CACHE_FILE" ] && [ $(( $(date +%s) - $(stat -c %Y "$CACHE_FILE") )) -lt $CACHE_EXPIRY ]; then
-        echo "📚 Loading collections from cache..."
+        echo "${ICON_PROMPT_COLLECTION} Loading collections from cache..."
         json=$(cat "$CACHE_FILE")
     else
         if ! fetch_collections; then
@@ -125,35 +176,39 @@ show_collections() {
 
         local page_entries=("${all_entries[@]:start:end-start+1}")
 
-        choices=("[🔍 Search all collections]" "[🔄 Refresh cache]" "")
+        choices=("[${YELLOW}${ICON_SEARCH}${RESET} Search all collections]" "[${BLUE}${ICON_REFRESH}${RESET} Refresh cache]" "")
         choices+=("${page_entries[@]}")
-        choices+=("" "[➡️ Next page]" "[❌ Exit]")
+        choices+=("" "[${BLUE}${ICON_NEXT}${RESET} Next page]" "[${RED}${ICON_EXIT}${RESET} Exit]")
 
         selection=$(printf '%s\n' "${choices[@]}" | fzf \
-            --prompt="📂 Select collection (Page $((page+1))/$total_pages) > " \
+            --ansi \
+            --prompt="${MAGENTA}${BOLD}${ICON_PROMPT_COLLECTION}${RESET} Select collection (Page $((page+1))/$total_pages) > " \
             --height=100% \
             --reverse \
             --border)
 
-        case "$selection" in
-            "[🔄 Refresh cache]")
+        # Strip ANSI codes for reliable case matching
+        sanitized_selection=$(echo "$selection" | sed 's/\x1b\[[0-9;]*[mG]//g')
+
+        case "$sanitized_selection" in
+            "[${ICON_REFRESH} Refresh cache]")
                 fetch_collections
                 mapfile -t all_entries < <(echo "$json" | jq -r '.response.docs[] | "\(.title) [\(.identifier)]"')
                 total_pages=$(( (${#all_entries[@]} + PAGE_SIZE - 1) / PAGE_SIZE ))
                 page=0
                 echo "✅ Cache refreshed."
                 ;;
-            "[🔍 Search all collections]")
+            "[${ICON_SEARCH} Search all collections]")
                 search_mode
                 continue
                 ;;
-            "[➡️ Next page]")
+            "[${ICON_NEXT} Next page]")
                 ((page++))
                 if [ $page -ge $total_pages ]; then
                     page=$((total_pages - 1))
                 fi
                 ;;
-            "[❌ Exit]"|"")
+            "[${ICON_EXIT} Exit]"|"")
                 echo "👋 Exiting."
                 exit 0
                 ;;
@@ -184,14 +239,14 @@ search_mode() {
     '\'' _ {1}'
 
     while true; do
-        query=$(printf '' | fzf --prompt="🔍 Type search query (ESC to return to main) > " --print-query --height=10 --reverse --border | head -n1)
+        query=$(printf '' | fzf --ansi --prompt="${MAGENTA}${BOLD}${ICON_SEARCH}${RESET} Type search query (ESC to return to main) > " --print-query --height=10 --reverse --border | head -n1)
         [ -z "$query" ] && return 0
 
         page=1
         rows=30
 
         while true; do
-            echo "🔎 Searching for \"$query\" (Page $page)..."
+            echo "${ICON_SEARCH} Searching for \"$query\" (Page $page)..."
             
             item_json=$(ia search "$query" --field identifier --field title --sort="downloads desc" -p "page:$page" -p "rows:$rows")
             if [ -z "$item_json" ]; then
@@ -206,12 +261,12 @@ search_mode() {
             choices=()
             
             if [ "${#items[@]}" -eq "$rows" ]; then
-                choices+=("[➡️ Next page]	[➡️ Next page]")
+                choices+=("[${BLUE}${ICON_NEXT} Next page${RESET}]	[${BLUE}${ICON_NEXT} Next page${RESET}]")
             fi
             if [ "$page" -gt 1 ]; then
-                 choices+=("[⬅️ Previous page]	[⬅️ Previous page]")
+                 choices+=("[${BLUE}${ICON_PREV} Previous page${RESET}]	[${BLUE}${ICON_PREV} Previous page${RESET}]")
             fi
-            choices+=("[🔍 Search all results]	[🔍 Search all results]")
+            choices+=("[${YELLOW}${ICON_SEARCH} Search all results${RESET}]	[${YELLOW}${ICON_SEARCH} Search all results${RESET}]")
 
             # Use a simple empty string for the gap, like the original script
             if [ "${#choices[@]}" -gt 0 ]; then
@@ -221,7 +276,8 @@ search_mode() {
             choices+=("${items[@]}")
 
             selected_line=$(printf '%s\n' "${choices[@]}" | fzf \
-                --prompt="🎥 Select title from '$query' (Page $page) > " \
+                --ansi \
+                --prompt="${MAGENTA}${BOLD}${ICON_PROMPT_TITLE}${RESET} Select title from '$query' (Page $page) > " \
                 --height=100% \
                 --reverse \
                 --border \
@@ -236,18 +292,21 @@ search_mode() {
                 break
             fi
 
-            case "$identifier_or_action" in
-                "[➡️ Next page]")
+            # Strip ANSI codes for reliable case matching
+            sanitized_action=$(echo "$identifier_or_action" | sed 's/\x1b\[[0-9;]*[mG]//g')
+
+            case "$sanitized_action" in
+                "[${ICON_NEXT} Next page]")
                     ((page++))
                     ;;
-                "[⬅️ Previous page]")
+                "[${ICON_PREV} Previous page]")
                     if [ "$page" -gt 1 ]; then
                         ((page--))
                     fi
                     ;;
-                "[🔍 Search all results]")
+                "[${ICON_SEARCH} Search all results]")
                     local sub_query_text
-                    sub_query_text=$(printf '' | fzf --prompt="🔎 Search within results for '$query': " --print-query --height=10 --reverse --border | head -n1)
+                    sub_query_text=$(printf '' | fzf --ansi --prompt="${MAGENTA}${BOLD}${ICON_SEARCH}${RESET} Search within results for '$query': " --print-query --height=10 --reverse --border | head -n1)
                     [ -z "$sub_query_text" ] && continue
 
                     echo "🔎 Searching for \"$query AND $sub_query_text\"..."
@@ -268,7 +327,8 @@ search_mode() {
                     
                     local selected_sub_item_line
                     selected_sub_item_line=$(cat "$temp_combined_file" | jq -s -r '.[] | "\(.identifier)\t\(.title)"' | fzf \
-                        --prompt="🎥 Results for '$combined_query' > " \
+                        --ansi \
+                        --prompt="${MAGENTA}${BOLD}${ICON_PROMPT_TITLE}${RESET} Results for '$combined_query' > " \
                         --height=100% \
                         --reverse \
                         --border \
@@ -317,7 +377,7 @@ browse_collection() {
     rows=30
 
     while true; do
-        echo "📁 Browsing collection: $coll (Page $page)..."
+        echo "${ICON_PROMPT_COLLECTION} Browsing collection: $coll (Page $page)..."
 
         item_json=$(ia search "collection:$coll" --field identifier --field title --sort="downloads desc" -p "page:$page" -p "rows:$rows")
         if [ -z "$item_json" ]; then
@@ -331,12 +391,12 @@ browse_collection() {
         choices=()
         
         if [ "${#items[@]}" -eq "$rows" ]; then
-            choices+=("[➡️ Next page]	[➡️ Next page]")
+            choices+=("[${BLUE}${ICON_NEXT} Next page${RESET}]	[${BLUE}${ICON_NEXT} Next page${RESET}]")
         fi
         if [ "$page" -gt 1 ]; then
-            choices+=("[⬅️ Previous page]	[⬅️ Previous page]")
+            choices+=("[${BLUE}${ICON_PREV} Previous page${RESET}]	[${BLUE}${ICON_PREV} Previous page${RESET}]")
         fi
-        choices+=("[🔍 Search all results]	[🔍 Search all results]")
+        choices+=("[${YELLOW}${ICON_SEARCH} Search all results${RESET}]	[${YELLOW}${ICON_SEARCH} Search all results${RESET}]")
 
         # Use a simple empty string for the gap, like the original script
         if [ "${#choices[@]}" -gt 0 ]; then
@@ -346,7 +406,8 @@ browse_collection() {
         choices+=("${items[@]}")
 
         selected_line=$(printf '%s\n' "${choices[@]}" | fzf \
-            --prompt="🎞️ Select title from $coll (Page $page) > " \
+            --ansi \
+            --prompt="${MAGENTA}${BOLD}${ICON_PROMPT_TITLE}${RESET} Select title from $coll (Page $page) > " \
             --height=100% \
             --reverse \
             --border \
@@ -361,18 +422,21 @@ browse_collection() {
             return
         fi
 
-        case "$identifier_or_action" in
-            "[➡️ Next page]")
+        # Strip ANSI codes for reliable case matching
+        sanitized_action=$(echo "$identifier_or_action" | sed 's/\x1b\[[0-9;]*[mG]//g')
+
+        case "$sanitized_action" in
+            "[${ICON_NEXT} Next page]")
                 ((page++))
                 ;;
-            "[⬅️ Previous page]")
+            "[${ICON_PREV} Previous page]")
                 if [ "$page" -gt 1 ]; then
                     ((page--))
                 fi
                 ;;
-            "[🔍 Search all results]")
+            "[${ICON_SEARCH} Search all results]")
                 local sub_query_text
-                sub_query_text=$(printf '' | fzf --prompt="🔎 Search within collection '$coll': " --print-query --height=10 --reverse --border | head -n1)
+                sub_query_text=$(printf '' | fzf --ansi --prompt="${MAGENTA}${BOLD}${ICON_SEARCH}${RESET} Search within collection '$coll': " --print-query --height=10 --reverse --border | head -n1)
                 [ -z "$sub_query_text" ] && continue
 
                 echo "🔎 Searching for \"collection:$coll AND $sub_query_text\"..."
@@ -393,7 +457,8 @@ browse_collection() {
                 
                 local selected_sub_item_line
                 selected_sub_item_line=$(cat "$temp_combined_file" | jq -s -r '.[] | "\(.identifier)\t\(.title)"' | fzf \
-                        --prompt="🎥 Results for '$combined_query' > " \
+                        --ansi \
+                        --prompt="${MAGENTA}${BOLD}${ICON_PROMPT_TITLE}${RESET} Results for '$combined_query' > " \
                         --height=100% \
                         --reverse \
                         --border \
@@ -425,24 +490,27 @@ browse_collection() {
 # --- Open / Play / Download Item ---
 open_item() {
     local identifier="$1"
-    echo "📂 Fetching file list for: $identifier ..."
+    echo "${ICON_OPEN} Fetching file list for: $identifier ..."
     file_list=$(ia list "$identifier")
-    filename=$(echo "$file_list" | fzf --prompt="📁 Select a file to open > " --height=100% --reverse --border)
+    filename=$(echo "$file_list" | fzf --ansi --prompt="${MAGENTA}${BOLD}${ICON_PROMPT_FILE}${RESET} Select a file to open > " --height=100% --reverse --border)
     [ -z "$filename" ] && echo "🚫 No file selected." && return
 
     case "$filename" in
         *.mp4|*.mkv|*.avi|*.webm|*.flv|*.ogv|*.mp3|*.ogg|*.flac|*.wav|*.m4a)
-            action_label="▶️ Play" ;;
-        *) action_label="📂 Open" ;;
+            action_label="${CYAN}${ICON_PLAY} Play${RESET}" ;;
+        *) action_label="${CYAN}${ICON_OPEN} Open${RESET}" ;;
     esac
 
-    action=$(echo -e "$action_label\n⬇️ Download" | fzf --prompt="🎬 Choose action for $filename > " --height=100% --reverse --border)
+    action=$(echo -e "$action_label\n${CYAN}${ICON_DOWNLOAD} Download${RESET}" | fzf --ansi --prompt="${MAGENTA}${BOLD}${ICON_PROMPT_ACTION}${RESET} Choose action for $filename > " --height=100% --reverse --border)
     [ -z "$action" ] && echo "🚫 No action selected." && return
+
+    # Strip ANSI codes for reliable matching
+    sanitized_action=$(echo "$action" | sed 's/\x1b\[[0-9;]*[mG]//g')
 
     filename_encoded=$(urlencode "$filename")
     url="https://archive.org/download/$identifier/$filename_encoded"
 
-    if [ "$action" == "▶️ Play" ] || [ "$action" == "📂 Open" ]; then
+    if [ "$sanitized_action" == "${ICON_PLAY} Play" ] || [ "$sanitized_action" == "${ICON_OPEN} Open" ]; then
         case "$filename" in
             *.mp4|*.mkv|*.avi|*.webm|*.flv|*.ogv)
                 echo "🎞️ Playing video..."
@@ -505,7 +573,7 @@ open_item() {
                 xdg-open "$url" >/dev/null 2>&1 &
                 ;;
         esac
-    elif [ "$action" == "⬇️ Download" ]; then
+    elif [ "$sanitized_action" == "${ICON_DOWNLOAD} Download" ]; then
         case "$filename" in
             *.mp4|*.mkv|*.avi|*.webm|*.flv|*.ogv)
                 $VIDEO_DOWNLOADER "$url" ;;
