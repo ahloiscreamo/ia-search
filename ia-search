@@ -64,9 +64,15 @@ fi
 API_URL="https://archive.org/advancedsearch.php"
 
 # --- Cache Config ---
-CACHE_FILE="$HOME/.cache/ia-search-collections.json"
-mkdir -p "$(dirname "$CACHE_FILE")"
-CACHE_EXPIRY=$((60*60*24))  # 24 hours
+export CACHE_BASE_DIR="$HOME/.cache/ia-search"
+export COLLECTIONS_CACHE_DIR="$CACHE_BASE_DIR/collections"
+export SEARCH_CACHE_DIR="$CACHE_BASE_DIR/search"
+export PREVIEW_CACHE_DIR="$CACHE_BASE_DIR/previews"
+export TOP_COLLECTIONS_CACHE_FILE="$COLLECTIONS_CACHE_DIR/top-500-collections.json"
+mkdir -p "$COLLECTIONS_CACHE_DIR"
+mkdir -p "$SEARCH_CACHE_DIR"
+mkdir -p "$PREVIEW_CACHE_DIR"
+export CACHE_EXPIRY=$((60*60*24*7)) # 7 days
 
 
 
@@ -82,6 +88,45 @@ check_deps() {
     done
     [ "$missing" -eq 1 ] && exit 1
 }
+
+# --- FZF Previewer ---
+# Caches and displays `ia list` output for fzf previews
+fzf_previewer() {
+    local item_text="$1"
+
+    # If the line is empty, do nothing
+    if [ -z "$item_text" ]; then
+        return
+    fi
+    
+    local identifier
+    identifier=$(echo "$item_text" | awk -F'\t' '{print $1}')
+
+    # Dont preview for navigation items
+    if [[ "$identifier" == "["* && "$identifier" == *"]"* ]]; then
+        echo "Navigate with Enter. No item preview for options."
+        return
+    fi
+
+    if [ -z "$identifier" ]; then
+        return
+    fi
+
+    # Use the identifier as the cache key, removing any problematic characters
+    local cache_key
+    cache_key=$(echo "$identifier" | sed "s/[^a-zA-Z0-9_-]/_/g")
+    local cache_file="$PREVIEW_CACHE_DIR/$cache_key"
+    
+    # Check for and use cache
+    if [ -f "$cache_file" ]; then
+        cat "$cache_file"
+    else
+        # Fetch, cache, and display
+        ia list "$identifier" | head -n 20 > "$cache_file"
+        cat "$cache_file"
+    fi
+}
+export -f fzf_previewer
 
 # --- Helper: Download and View ---
 download_and_view() {
@@ -152,13 +197,13 @@ show_collections() {
         fi
         
         json="$fetched_json" # Update parent scope variable
-        echo "$json" > "$CACHE_FILE"
+        echo "$json" > "$TOP_COLLECTIONS_CACHE_FILE"
         return 0
     }
 
-    if [ -f "$CACHE_FILE" ] && [ $(( $(date +%s) - $(stat -c %Y "$CACHE_FILE") )) -lt $CACHE_EXPIRY ]; then
+    if [ -f "$TOP_COLLECTIONS_CACHE_FILE" ] && [ $(( $(date +%s) - $(stat -c %Y "$TOP_COLLECTIONS_CACHE_FILE") )) -lt $CACHE_EXPIRY ]; then
         echo "${ICON_PROMPT_COLLECTION} Loading collections from cache..."
-        json=$(cat "$CACHE_FILE")
+        json=$(cat "$TOP_COLLECTIONS_CACHE_FILE")
     else
         if ! fetch_collections; then
             echo "👋 Exiting due to network error."
@@ -224,19 +269,7 @@ show_collections() {
 search_mode() {
     local query identifier_or_action page rows item_json selected_line
     local -a choices items
-
-    # This preview command now includes the original's simple check for an empty line.
-    local preview_command='bash -c '\''
-        item_text="$1"
-        # If the line is empty, do nothing (this handles the gap/space)
-        if [ -z "$item_text" ]; then
-            :
-        elif [[ "$item_text" == "["* && "$item_text" == *"]"* ]]; then
-            echo "Navigate with Enter. No item preview for options."
-        else
-            ia list "$item_text" | head -n 20
-        fi
-    '\'' _ {1}'
+    local preview_command='fzf_previewer {1}'
 
     while true; do
         query=$(printf '' | fzf --ansi --prompt="${MAGENTA}${BOLD}${ICON_SEARCH}${RESET} Type search query (ESC to return to main) > " --print-query --height=10 --reverse --border | head -n1)
@@ -248,7 +281,18 @@ search_mode() {
         while true; do
             echo "${ICON_SEARCH} Searching for \"$query\" (Page $page)..."
             
-            item_json=$(ia search "$query" --field identifier --field title --sort="downloads desc" -p "page:$page" -p "rows:$rows")
+            local query_hash
+            query_hash=$(echo -n "$query" | md5sum | cut -d' ' -f1)
+            local cache_file="$SEARCH_CACHE_DIR/${query_hash}-page-${page}.json"
+
+            if [ -f "$cache_file" ]; then
+                item_json=$(cat "$cache_file")
+            else
+                item_json=$(ia search "$query" --field identifier --field title --sort="downloads desc" -p "page:$page" -p "rows:$rows")
+                if [ $? -eq 0 ] && [ -n "$item_json" ]; then
+                    echo "$item_json" > "$cache_file"
+                fi
+            fi
             if [ -z "$item_json" ]; then
                 echo "🚫 No results found for page $page."
                 if [ "$page" -eq 1 ]; then break; fi
@@ -266,7 +310,9 @@ search_mode() {
             if [ "$page" -gt 1 ]; then
                  choices+=("[${BLUE}${ICON_PREV} Previous page${RESET}]	[${BLUE}${ICON_PREV} Previous page${RESET}]")
             fi
+            choices+=("[${CYAN}${ICON_REFRESH} Refresh page${RESET}]	[${CYAN}${ICON_REFRESH} Refresh page${RESET}]")
             choices+=("[${YELLOW}${ICON_SEARCH} Search all results${RESET}]	[${YELLOW}${ICON_SEARCH} Search all results${RESET}]")
+            choices+=("[${RED}${ICON_EXIT} Back to main${RESET}]	[${RED}${ICON_EXIT} Back to main${RESET}]")
 
             # Use a simple empty string for the gap, like the original script
             if [ "${#choices[@]}" -gt 0 ]; then
@@ -296,6 +342,13 @@ search_mode() {
             sanitized_action=$(echo "$identifier_or_action" | sed 's/\x1b\[[0-9;]*[mG]//g')
 
             case "$sanitized_action" in
+                "[${ICON_REFRESH} Refresh page]")
+                    if [ -f "$cache_file" ]; then
+                        rm "$cache_file"
+                        echo "✅ Page cache cleared. Refreshing..."
+                    fi
+                    continue
+                    ;;
                 "[${ICON_NEXT} Next page]")
                     ((page++))
                     ;;
@@ -323,7 +376,16 @@ search_mode() {
                     
                     local temp_combined_file
                     temp_combined_file=$(mktemp)
-                    (ia search "$combined_query" --field identifier --field title | pv -l -s "$total_combined_hits" -N "Loading combined" > "$temp_combined_file")
+                    
+                    local combined_query_hash
+                    combined_query_hash=$(echo -n "$combined_query" | md5sum | cut -d' ' -f1)
+                    local cache_file="$SEARCH_CACHE_DIR/${combined_query_hash}-all.json"
+
+                    if [ -f "$cache_file" ]; then
+                        pv -N "Loading from cache" "$cache_file" > "$temp_combined_file"
+                    else
+                        (ia search "$combined_query" --field identifier --field title | tee "$cache_file" | pv -l -s "$total_combined_hits" -N "Loading combined" > "$temp_combined_file")
+                    fi
                     
                     local selected_sub_item_line
                     selected_sub_item_line=$(cat "$temp_combined_file" | jq -s -r '.[] | "\(.identifier)\t\(.title)"' | fzf \
@@ -346,6 +408,9 @@ search_mode() {
                     fi
                     break
                     ;;
+                "[${ICON_EXIT} Back to main]")
+                    return
+                    ;;
                 *)
                     open_item "$identifier_or_action"
                     ;;
@@ -360,18 +425,7 @@ browse_collection() {
     local identifier_or_action page rows item_json selected_line
     local -a choices items
     
-    # This preview command now includes the original's simple check for an empty line.
-    local preview_command='bash -c '\''
-        item_text="$1"
-        # If the line is empty, do nothing (this handles the gap/space)
-        if [ -z "$item_text" ]; then
-            :
-        elif [[ "$item_text" == "["* && "$item_text" == *"]"* ]]; then
-            echo "Navigate with Enter. No item preview for options."
-        else
-            ia list "$item_text" | head -n 20
-        fi
-    '\'' _ {1}'
+    local preview_command='fzf_previewer {1}'
 
     page=1
     rows=30
@@ -379,7 +433,15 @@ browse_collection() {
     while true; do
         echo "${ICON_PROMPT_COLLECTION} Browsing collection: $coll (Page $page)..."
 
-        item_json=$(ia search "collection:$coll" --field identifier --field title --sort="downloads desc" -p "page:$page" -p "rows:$rows")
+        local cache_file="$COLLECTIONS_CACHE_DIR/${coll}-page-${page}.json"
+        if [ -f "$cache_file" ]; then
+            item_json=$(cat "$cache_file")
+        else
+            item_json=$(ia search "collection:$coll" --field identifier --field title --sort="downloads desc" -p "page:$page" -p "rows:$rows")
+            if [ $? -eq 0 ] && [ -n "$item_json" ]; then
+                echo "$item_json" > "$cache_file"
+            fi
+        fi
         if [ -z "$item_json" ]; then
             echo "🚫 No results found for page $page."
             if [ "$page" -eq 1 ]; then break; fi
@@ -396,7 +458,9 @@ browse_collection() {
         if [ "$page" -gt 1 ]; then
             choices+=("[${BLUE}${ICON_PREV} Previous page${RESET}]	[${BLUE}${ICON_PREV} Previous page${RESET}]")
         fi
+        choices+=("[${CYAN}${ICON_REFRESH} Refresh page${RESET}]	[${CYAN}${ICON_REFRESH} Refresh page${RESET}]")
         choices+=("[${YELLOW}${ICON_SEARCH} Search all results${RESET}]	[${YELLOW}${ICON_SEARCH} Search all results${RESET}]")
+        choices+=("[${RED}${ICON_EXIT} Back to main${RESET}]	[${RED}${ICON_EXIT} Back to main${RESET}]")
 
         # Use a simple empty string for the gap, like the original script
         if [ "${#choices[@]}" -gt 0 ]; then
@@ -426,6 +490,13 @@ browse_collection() {
         sanitized_action=$(echo "$identifier_or_action" | sed 's/\x1b\[[0-9;]*[mG]//g')
 
         case "$sanitized_action" in
+            "[${ICON_REFRESH} Refresh page]")
+                if [ -f "$cache_file" ]; then
+                    rm "$cache_file"
+                    echo "✅ Page cache cleared. Refreshing..."
+                fi
+                continue
+                ;;
             "[${ICON_NEXT} Next page]")
                 ((page++))
                 ;;
@@ -453,7 +524,16 @@ browse_collection() {
                 
                 local temp_combined_file
                 temp_combined_file=$(mktemp)
-                (ia search "$combined_query" --field identifier --field title | pv -l -s "$total_combined_hits" -N "Loading combined" > "$temp_combined_file")
+
+                local combined_query_hash
+                combined_query_hash=$(echo -n "$combined_query" | md5sum | cut -d' ' -f1)
+                local cache_file="$SEARCH_CACHE_DIR/${combined_query_hash}-all.json"
+
+                if [ -f "$cache_file" ]; then
+                    pv -N "Loading from cache" "$cache_file" > "$temp_combined_file"
+                else
+                    (ia search "$combined_query" --field identifier --field title | tee "$cache_file" | pv -l -s "$total_combined_hits" -N "Loading combined" > "$temp_combined_file")
+                fi
                 
                 local selected_sub_item_line
                 selected_sub_item_line=$(cat "$temp_combined_file" | jq -s -r '.[] | "\(.identifier)\t\(.title)"' | fzf \
@@ -476,12 +556,14 @@ browse_collection() {
                 fi
                 return
                 ;;
+            "[${ICON_EXIT} Back to main]")
+                return
+                ;;
             " ")
                 # This is the blank line, do nothing.
                 ;;
             *)
                 open_item "$identifier_or_action"
-                return
                 ;;
         esac
     done
