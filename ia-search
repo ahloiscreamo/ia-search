@@ -573,97 +573,177 @@ browse_collection() {
 open_item() {
     local identifier="$1"
     echo "${ICON_OPEN} Fetching file list for: $identifier ..."
+    local file_list
     file_list=$(ia list "$identifier")
-    filename=$(echo "$file_list" | fzf --ansi --prompt="${MAGENTA}${BOLD}${ICON_PROMPT_FILE}${RESET} Select a file to open > " --height=100% --reverse --border)
-    [ -z "$filename" ] && echo "🚫 No file selected." && return
 
-    case "$filename" in
-        *.mp4|*.mkv|*.avi|*.webm|*.flv|*.ogv|*.mp3|*.ogg|*.flac|*.wav|*.m4a)
-            action_label="${CYAN}${ICON_PLAY} Play${RESET}" ;;
-        *) action_label="${CYAN}${ICON_OPEN} Open${RESET}" ;;
-    esac
-
-    action=$(echo -e "$action_label\n${CYAN}${ICON_DOWNLOAD} Download${RESET}" | fzf --ansi --prompt="${MAGENTA}${BOLD}${ICON_PROMPT_ACTION}${RESET} Choose action for $filename > " --height=100% --reverse --border)
-    [ -z "$action" ] && echo "🚫 No action selected." && return
-
-    # Strip ANSI codes for reliable matching
-    sanitized_action=$(echo "$action" | sed 's/\x1b\[[0-9;]*[mG]//g')
-
-    filename_encoded=$(urlencode "$filename")
-    url="https://archive.org/download/$identifier/$filename_encoded"
-
-    if [ "$sanitized_action" == "${ICON_PLAY} Play" ] || [ "$sanitized_action" == "${ICON_OPEN} Open" ]; then
-        case "$filename" in
-            *.mp4|*.mkv|*.avi|*.webm|*.flv|*.ogv)
-                echo "🎞️ Playing video..."
-                video_basename=$(echo "$filename" | sed 's/\.[^.]*$//')
-                
-                sub_file=$(echo "$file_list" | grep -E "^${video_basename//./\\.}.*\\.(srt|ass)$" | head -n1)
-
-                # Create a temporary log file to monitor mpv status
-                mpv_log=$(mktemp)
-
-                if [ -n "$sub_file" ]; then
-                    sub_encoded=$(urlencode "$sub_file")
-                    sub_url="https://archive.org/download/$identifier/$sub_encoded"
-                    # Redirect stderr/stdout to log file so we can grep it
-                    $VIDEO_PLAYER "$url" --sub-file="$sub_url" > "$mpv_log" 2>&1 &
-                else
-                    $VIDEO_PLAYER "$url" > "$mpv_log" 2>&1 &
-                fi 
-                
-                pid=$!
-
-                # --- Real-time Launch Monitor ---
-                # This loop waits until mpv prints "VO:" (Video Output) or "AO:" (Audio Output) to the log.
-                # This confirms that buffering is done and the window is actually ready.
-                (
-                    # Timeout after 200 ticks (approx 20 seconds) to prevent hanging on slow networks
-                    for ((i=0; i<200; i++)); do
-                        # If mpv crashes, stop waiting
-                        if ! kill -0 "$pid" 2>/dev/null; then break; fi
-                        
-                        # Check the log for "VO:" or "AO:" (Success signals)
-                        if grep -q -E "^(VO|AO):" "$mpv_log"; then break; fi
-                        
-                        echo -n "."
-                        sleep 0.1
-                    done
-                ) | pv -p -t -e -N "🚀 Launching mpv" -s 200 > /dev/null
-
-                # Clean up
-                rm -f "$mpv_log"
-                ;;
-
-            *.mp3|*.ogg|*.flac|*.wav|*.m4a)
-                echo "🎧 Playing audio..."
-                $AUDIO_PLAYER "$url" >/dev/null 2>&1 & ;;
-            *.png|*.jpg|*.jpeg|*.gif|*.bmp)
-                download_and_view "$url" "$IMAGE_VIEWER" ;;
-            *.pdf)
-                download_and_view "$url" "$PDF_VIEWER" ;;
-            *.txt|*.md|*.rst|*.csv|*.log|*.tex|*.sh|*.py|*.c|*.cpp|*.h|*.java|*.js|*.ts|*.json|*.xml|*.yaml|*.yml|*.ini|*.conf|*.cfg)
-                temp_file=$(mktemp)
-                curl -sL "$url" -o "$temp_file"
-                if [ -s "$temp_file" ]; then
-                    vim "$temp_file"
-                    rm -f "$temp_file"
-                else
-                    echo "🚫 Failed to fetch $filename"
-                fi ;;
-            *)
-                xdg-open "$url" >/dev/null 2>&1 &
-                ;;
-        esac
-    elif [ "$sanitized_action" == "${ICON_DOWNLOAD} Download" ]; then
-        case "$filename" in
-            *.mp4|*.mkv|*.avi|*.webm|*.flv|*.ogv)
-                $VIDEO_DOWNLOADER "$url" ;;
-            *)
-                curl -L -o "$filename" "$url" ;;
-        esac
-        echo "✅ Done."
+    if [ -z "$file_list" ]; then
+        echo "🚫 No files found for this item or failed to fetch."
+        sleep 2
+        return
     fi
+
+    # Helper function to extract a 'core' name for fuzzy matching
+    get_core_name() {
+        local input_name="$1"
+        # To lowercase, remove extension, remove bracketed/parenthesized content, 
+        # then keep only alphanumeric and spaces, and finally trim whitespace.
+        echo "$input_name" | \
+        tr '[:upper:]' '[:lower:]' | \
+        sed -E 's/\.[^.]*$//' | \
+        sed -E 's/\[[^]]*\]//g' | \
+        sed -E 's/\([^)]*\)//g' | \
+        tr -cd '[:alnum:][:space:]' | \
+        tr -s ' ' | \
+        sed 's/^[[:space:]]*//;s/[[:space:]]*$//'
+    }
+
+    while true; do
+        local file_choices="${file_list}"
+        file_choices+=$'\n\n'"[${RED}${ICON_EXIT} Back to title list${RESET}]"
+
+        local filename
+        filename=$(echo -e "${file_choices}" | fzf \
+            --ansi \
+            --prompt="${MAGENTA}${BOLD}${ICON_PROMPT_FILE}${RESET} Select a file to open (or back) > " \
+            --height=100% \
+            --reverse \
+            --border)
+
+        local sanitized_filename
+        sanitized_filename=$(echo "$filename" | sed 's/\x1b\[[0-9;]*[mG]//g')
+
+        if [ -z "$filename" ] || [[ "$sanitized_filename" == "[${ICON_EXIT} Back to title list]" ]]; then
+            return
+        fi
+
+        local action_label
+        case "$filename" in
+            *.mp4|*.mkv|*.avi|*.webm|*.flv|*.ogv|*.mp3|*.ogg|*.flac|*.wav|*.m4a)
+                action_label="${CYAN}${ICON_PLAY} Play${RESET}" ;;
+            *) action_label="${CYAN}${ICON_OPEN} Open${RESET}" ;;
+        esac
+
+        local action
+        action=$(echo -e "$action_label\n${CYAN}${ICON_DOWNLOAD} Download${RESET}\n${RED}${ICON_EXIT} Back to file list${RESET}" | fzf \
+            --ansi \
+            --prompt="${MAGENTA}${BOLD}${ICON_PROMPT_ACTION}${RESET} Choose action for $filename > " \
+            --height=100% \
+            --reverse \
+            --border)
+
+        # Strip ANSI codes for reliable matching
+        local sanitized_action
+        sanitized_action=$(echo "$action" | sed 's/\x1b\[[0-9;]*[mG]//g')
+        
+        if [ -z "$action" ] || [[ "$sanitized_action" == "[${ICON_EXIT} Back to file list]" ]]; then
+            continue
+        fi
+
+        local filename_encoded
+        filename_encoded=$(urlencode "$filename")
+        local url="https://archive.org/download/$identifier/$filename_encoded"
+
+        if [ "$sanitized_action" == "${ICON_PLAY} Play" ] || [ "$sanitized_action" == "${ICON_OPEN} Open" ]; then
+            case "$filename" in
+                *.mp4|*.mkv|*.avi|*.webm|*.flv|*.ogv)
+                    echo "🎞️ Playing video..."
+                    
+                    # --- Fuzzy Subtitle Matching Logic ---
+                    local sub_file=""
+                    local video_core_name
+                    video_core_name=$(get_core_name "$filename")
+
+                    if [ -n "$video_core_name" ]; then
+                        local best_match=""
+                        local min_len=9999
+                        
+                        # Filter for srt/ass files first to avoid unnecessary processing
+                        local subtitle_candidates
+                        subtitle_candidates=$(echo "$file_list" | grep -E '\.(srt|ass)$')
+
+                        while IFS= read -r sub_candidate; do
+                            if [ -z "$sub_candidate" ]; then continue; fi
+                            
+                            local sub_core_name
+                            sub_core_name=$(get_core_name "$sub_candidate")
+
+                            # Check if video core name is a substring of sub core name
+                            if [[ "$sub_core_name" == *"$video_core_name"* ]]; then
+                                local current_len=${#sub_core_name}
+                                if [ "$current_len" -lt "$min_len" ]; then
+                                    min_len=$current_len
+                                    best_match="$sub_candidate"
+                                fi
+                            fi
+                        done <<< "$subtitle_candidates"
+                        sub_file="$best_match"
+                    fi
+                    # --- End of Fuzzy Matching Logic ---
+
+                    # Create a temporary log file to monitor mpv status
+                    local mpv_log
+                    mpv_log=$(mktemp)
+
+                    if [ -n "$sub_file" ]; then
+                        echo "📖 Found matching subtitle: $sub_file"
+                        local sub_encoded
+                        sub_encoded=$(urlencode "$sub_file")
+                        local sub_url="https://archive.org/download/$identifier/$sub_encoded"
+                        # Redirect stderr/stdout to log file so we can grep it
+                        $VIDEO_PLAYER "$url" --sub-file="$sub_url" > "$mpv_log" 2>&1 &
+                    else
+                        echo "🚫 No matching subtitle found."
+                        $VIDEO_PLAYER "$url" > "$mpv_log" 2>&1 &
+                    fi 
+                    
+                    local pid=$!
+
+                    # --- Real-time Launch Monitor ---
+                    (
+                        for ((i=0; i<200; i++)); do
+                            if ! kill -0 "$pid" 2>/dev/null; then break; fi
+                            if grep -q -E "^(VO|AO):" "$mpv_log"; then break; fi
+                            echo -n "."
+                            sleep 0.1
+                        done
+                    ) | pv -p -t -e -N "🚀 Launching mpv" -s 200 > /dev/null
+
+                    # Clean up
+                    rm -f "$mpv_log"
+                    ;;
+
+                *.mp3|*.ogg|*.flac|*.wav|*.m4a)
+                    echo "🎧 Playing audio..."
+                    $AUDIO_PLAYER "$url" >/dev/null 2>&1 & ;;
+                *.png|*.jpg|*.jpeg|*.gif|*.bmp)
+                    download_and_view "$url" "$IMAGE_VIEWER" ;;
+                *.pdf)
+                    download_and_view "$url" "$PDF_VIEWER" ;;
+                *.txt|*.md|*.rst|*.csv|*.log|*.tex|*.sh|*.py|*.c|*.cpp|*.h|*.java|*.js|*.ts|*.json|*.xml|*.yaml|*.yml|*.ini|*.conf|*.cfg)
+                    local temp_file
+                    temp_file=$(mktemp)
+                    curl -sL "$url" -o "$temp_file"
+                    if [ -s "$temp_file" ]; then
+                        vim "$temp_file"
+                        rm -f "$temp_file"
+                    else
+                        echo "🚫 Failed to fetch $filename"
+                    fi ;;
+                *)
+                    xdg-open "$url" >/dev/null 2>&1 &
+                    ;;
+            esac
+        elif [ "$sanitized_action" == "${ICON_DOWNLOAD} Download" ]; then
+            case "$filename" in
+                *.mp4|*.mkv|*.avi|*.webm|*.flv|*.ogv)
+                    $VIDEO_DOWNLOADER "$url" ;;
+                *)
+                    curl -L -o "$filename" "$url" ;;
+            esac
+            echo "✅ Done. Press Enter to continue."
+            read -r
+        fi
+    done
 }
 
 # --- Main ---
