@@ -9,13 +9,11 @@ This script is designed to be compatible with older versions of `fzf` and variou
 ## ✨ Features
 
 -   **Interactive Collection Browser**: Starts with a list of the top 500 most-downloaded collections, with pagination.
-   <img width="1700" height="934" alt="01" src="https://github.com/user-attachments/assets/55d1942f-cfbb-47de-9df3-461e6505e486" />
-
+   <img width="1480" height="934" alt="01" src="https://github.com/user-attachments/assets/61be806e-45a9-4678-a89b-286c4b0a679f" />
 
 -   **Efficient Sub-Searching**: Instead of loading huge lists, the `[🔍 Search all results]` option lets you perform a targeted search within a large collection or broad query.
 -   **Paginated Results**: Both `search` and `browse` modes display results in pages of 30 items for faster loading and navigation.
-   <img width="1700" height="934" alt="02" src="https://github.com/user-attachments/assets/d91c18e4-2590-46e3-8d82-de7d556156d8" />
-
+   <img width="1480" height="934" alt="02" src="https://github.com/user-attachments/assets/2b49ef68-ac68-41e5-a5ef-8e8dc54a04cc" />
 
 -   **Loading Progress Bar**: When using `[🔍 Search all results]`, a progress bar shows the status of loading the item list.
 -   **Live Item Preview**: While browsing items, a preview window on the right shows the first 20 files within the selected item.
