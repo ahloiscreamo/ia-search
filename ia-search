@@ -80,7 +80,7 @@ export CACHE_EXPIRY=$((60*60*24*7)) # 7 days
 # --- Dependency Check ---
 check_deps() {
     local missing=0
-    for cmd in fzf jq curl ia pv mpv nsxiv zathura yt-dlp; do
+    for cmd in fzf jq curl ia pv mpv nsxiv zathura yt-dlp python3; do
         if ! command -v "$cmd" &> /dev/null; then
             echo "❌ Error: Required command '$cmd' is not installed."
             missing=1
@@ -153,20 +153,7 @@ download_and_view() {
 
 # --- URL Encode ---
 urlencode() {
-    local string="${1}"
-    local strlen=${#string}
-    local encoded=""
-    local pos c
-
-    for (( pos=0 ; pos<strlen ; pos++ )); do
-        c=${string:$pos:1}
-        case "$c" in
-            [-_.~a-zA-Z0-9] ) o="${c}" ;;
-            * )               printf -v o '%%%02x' "'$c"
-        esac
-        encoded+="${o}"
-    done
-    echo "${encoded}"
+    python3 -c "import urllib.parse, sys; print(urllib.parse.quote(sys.argv[1], safe='/-_.~'))" "$1"
 }
 
 # --- Show Collections ---
@@ -269,7 +256,7 @@ show_collections() {
 search_mode() {
     local query identifier_or_action page rows item_json selected_line
     local -a choices items
-    local preview_command='fzf_previewer {1}'
+    local preview_command='bash -c '\''fzf_previewer "$@"'\'' _ {1}'
 
     while true; do
         query=$(printf '' | fzf --ansi --prompt="${MAGENTA}${BOLD}${ICON_SEARCH}${RESET} Type search query (ESC to return to main) > " --print-query --height=10 --reverse --border | head -n1)
@@ -425,7 +412,7 @@ browse_collection() {
     local identifier_or_action page rows item_json selected_line
     local -a choices items
     
-    local preview_command='fzf_previewer {1}'
+    local preview_command='bash -c '\''fzf_previewer "$@"'\'' _ {1}'
 
     page=1
     rows=30
@@ -690,10 +677,10 @@ open_item() {
                         sub_encoded=$(urlencode "$sub_file")
                         local sub_url="https://archive.org/download/$identifier/$sub_encoded"
                         # Redirect stderr/stdout to log file so we can grep it
-                        $VIDEO_PLAYER "$url" --sub-file="$sub_url" > "$mpv_log" 2>&1 &
+                        $VIDEO_PLAYER --ytdl=no "$url" --sub-file="$sub_url" > "$mpv_log" 2>&1 &
                     else
                         echo "🚫 No matching subtitle found."
-                        $VIDEO_PLAYER "$url" > "$mpv_log" 2>&1 &
+                        $VIDEO_PLAYER --ytdl=no "$url" > "$mpv_log" 2>&1 &
                     fi 
                     
                     local pid=$!
@@ -707,6 +694,16 @@ open_item() {
                             sleep 0.1
                         done
                     ) | pv -p -t -e -N "🚀 Launching mpv" -s 200 > /dev/null
+
+                    # Check if mpv failed and show log
+                    if ! kill -0 "$pid" 2>/dev/null; then
+                        echo "🚫 mpv failed to launch. Error log:"
+                        echo "-------------------------------------"
+                        cat "$mpv_log"
+                        echo "-------------------------------------"
+                        echo "Press Enter to continue."
+                        read -r
+                    fi
 
                     # Clean up
                     rm -f "$mpv_log"
