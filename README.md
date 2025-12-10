@@ -42,6 +42,7 @@ This script is designed to be compatible with older versions of `fzf` and variou
 | [`zathura`](https://pwmt.org/projects/zathura/) or other PDF viewer          | PDF viewer                                |
 | [`yt-dlp`](https://github.com/yt-dlp/yt-dlp)                                 | Downloader for videos                     |
 | [`curl`](https://curl.se/)                                                   | File downloader / API fetcher             |
+| `python3`                                                                    | Robust URL encoding (for file paths)      |
 
 
 ### Ubuntu dependencies
