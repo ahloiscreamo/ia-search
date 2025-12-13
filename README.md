@@ -4,6 +4,14 @@
 
 ---
 
+<img width="1500" height="964" alt="01" src="https://github.com/user-attachments/assets/c40b43e2-3809-40bb-9634-9c285048adaf" />
+
+<img width="1500" height="964" alt="02" src="https://github.com/user-attachments/assets/406ca273-30a1-4e73-9143-f00f5f1eb977" />
+
+<img width="1500" height="964" alt="03" src="https://github.com/user-attachments/assets/dab57414-7896-472f-b0c7-bd84677a6f89" />
+
+---
+
 ## ✨ Features
 
 -   **Interactive Menus**: Navigate collections, search results, and files using `fzf` with full cycling (scrolling loops around).
