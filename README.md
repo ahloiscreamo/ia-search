@@ -69,13 +69,13 @@ The search prompt accepts standard Internet Archive advanced search queries.
 
 | Field | Description | Example |
 | :--- | :--- | :--- |
-| `mediatype` | The primary content category. | `mediatype:texts` |
-| `title` | The title of the work. | `title:"Maison Ikkoku"` |
-| `creator` | The author, director, artist, etc. | `creator:"Philip K. Dick"` |
-| `subject` | Keywords, topics, or themes. | `subject:"artix linux"` |
-| `collection` | The collection the item belongs to. | `collection:prelingerarchives` |
+| `mediatype` | The primary content category. | `mediatype:movies` |
+| `title` | The title of the work. | `title:"Floating weeds"` |
+| `creator` | The author, director, artist, etc. | `creator:"yasujiro ozu"` |
+| `subject` | Keywords, topics, or themes. | `subject:"japanese cinema"` |
+| `collection` | The collection the item belongs to. | `collection:vhsmovies` |
 | `date` | The publication date. | `date:[1980 TO 1989]` |
-| `language` | The language of the content (ISO 639-2 code). | `language:eng` |
+| `language` | The language of the content (ISO 639-2 code). | `language:jpn` |
 
 #### Common `mediatype` Values
 -   `texts` (Books, documents)
