@@ -27,6 +27,7 @@ if [ "$USE_NERD_ICONS" = "true" ]; then
     ICON_PROMPT_TITLE=""
     ICON_PROMPT_FILE=""
     ICON_PROMPT_ACTION=""
+    ICON_INFO="" # Info icon for help
 else
     # Emoji Fallbacks
     ICON_SEARCH="🔍"
@@ -41,6 +42,7 @@ else
     ICON_PROMPT_TITLE="🎥"
     ICON_PROMPT_FILE="📁"
     ICON_PROMPT_ACTION="🎬"
+    ICON_INFO="ℹ️" # Info emoji for help
 fi
 
 # --- Color Config ---
@@ -68,10 +70,12 @@ export CACHE_BASE_DIR="$HOME/.cache/ia-search"
 export COLLECTIONS_CACHE_DIR="$CACHE_BASE_DIR/collections"
 export SEARCH_CACHE_DIR="$CACHE_BASE_DIR/search"
 export PREVIEW_CACHE_DIR="$CACHE_BASE_DIR/previews"
+export IA_SEARCH_HISTORY_FILE="$CACHE_BASE_DIR/search-history.txt"
 export TOP_COLLECTIONS_CACHE_FILE="$COLLECTIONS_CACHE_DIR/top-500-collections.json"
 mkdir -p "$COLLECTIONS_CACHE_DIR"
 mkdir -p "$SEARCH_CACHE_DIR"
 mkdir -p "$PREVIEW_CACHE_DIR"
+touch "$IA_SEARCH_HISTORY_FILE"
 export CACHE_EXPIRY=$((60*60*24*7)) # 7 days
 
 
@@ -117,13 +121,25 @@ fzf_previewer() {
     cache_key=$(echo "$identifier" | sed "s/[^a-zA-Z0-9_-]/_/g")
     local cache_file="$PREVIEW_CACHE_DIR/$cache_key"
     
-    # Check for and use cache
-    if [ -f "$cache_file" ]; then
+    # Check for and use a non-empty cache file.
+    if [ -s "$cache_file" ]; then
         cat "$cache_file"
     else
-        # Fetch, cache, and display
-        ia list "$identifier" | head -n 20 > "$cache_file"
-        cat "$cache_file"
+        # If cache is missing or empty, fetch the list.
+        local list_output
+        list_output=$(ia list "$identifier" 2>/dev/null | head -n 20)
+        
+        # If we got some output, cache it and display it.
+        if [ -n "$list_output" ]; then
+            echo "$list_output" > "$cache_file"
+            echo "$list_output"
+        else
+            # If we got no output, it's likely an empty item.
+            # Cache a message to prevent re-fetching every time.
+            local empty_msg="-- No listable files found for this item --"
+            echo "$empty_msg" > "$cache_file"
+            echo "$empty_msg"
+        fi
     fi
 }
 export -f fzf_previewer
@@ -154,6 +170,96 @@ download_and_view() {
 # --- URL Encode ---
 urlencode() {
     python3 -c "import urllib.parse, sys; print(urllib.parse.quote(sys.argv[1], safe='/-_.~'))" "$1"
+}
+
+# --- Help Function ---
+usage() {
+    cat << EOF
+ia-search - Interactive Internet Archive Browser & Downloader
+
+USAGE:
+    ia-search [OPTIONS]
+
+DESCRIPTION:
+    A script to interactively browse, search, and download files from the Internet Archive.
+
+OPTIONS:
+    -h, --help    Show this help message and exit.
+
+SEARCH SYNTAX:
+    The search prompt accepts standard Internet Archive advanced search queries.
+    You can combine terms with AND, OR, and NOT. Queries are in the format:
+
+    field:value
+
+    --- Common Searchable Metadata Fields ---
+    The Internet Archive allows searching against many different metadata fields.
+    The most common and reliable fields to use in your queries include:
+
+    - mediatype:   The primary content type/category of the item.
+                   Example: mediatype:texts
+    - title:       The title of the work.
+                   Example: title:"Maison Ikkoku"
+    - creator:     The person or entity that created the work.
+                   Example: creator:"Philip K. Dick"
+    - subject:     Keywords, topics, or themes describing the content.
+                   Example: subject:"artix linux"
+    - collection:  The collection(s) the item belongs to.
+                   Example: collection:prelingerarchives
+    - date:        The publication date (often YYYY or YYYY-MM-DD).
+                   Example: date:[1980 TO 1989]
+    - language:    The language of the item's content.
+                   Example: language:eng
+    - identifier:  The unique ID of the item (the last part of the URL).
+                   Example: identifier:openlibrary
+    - format:      The file format(s) available for the item.
+                   Example: format:pdf or format:epub
+
+    --- Full List of mediatype Values ---
+    The 'mediatype' organizes the site's content into major categories.
+    These are the most relevant and valid values you should use:
+
+    - texts        (Books, documents, magazines, etc.)
+    - audio        (General audio, including music, podcasts, etc.)
+    - movies       (Video files, films, cartoons, public affairs)
+    - software     (Historical software, games, applications)
+    - image        (Photos, artwork, historical images)
+    - data         (Datasets and raw data files)
+    - web          (Web archives, including Wayback Machine captures)
+
+    Note: You may sometimes see 'etree' (specialized audio) or 'collection' or 'account',
+          but the list above covers the main content categories.
+
+    --- language Values (ISO 639-2 Codes) ---
+    The values for the 'language' field use three-character lowercase codes
+    based on the ISO 639-2 standard.
+
+    For example, for Japanese, use: language:jpn
+
+    Some common examples of three-letter language codes:
+    - English:  eng
+    - Japanese: jpn
+    - French:   fre or fra
+    - German:   ger or deu
+    - Chinese:  chi or zho
+    - Spanish:  spa
+    - Russian:  rus
+    - Italian:  ita
+    - Korean:   kor
+
+    For a full list of these codes, search for "ISO 639-2 language codes".
+
+    --- Query Syntax Recap ---
+    Remember you can combine these fields using Boolean operators:
+
+    - AND: Narrows the search (e.g., mediatype:movies AND language:jpn)
+    - OR:  Widens the search (e.g., language:eng OR language:fre)
+    - NOT: Excludes items (e.g., mediatype:texts AND NOT collection:gutenberg)
+
+DEPENDENCIES:
+    fzf, jq, curl, ia, pv, mpv, nsxiv, zathura, yt-dlp, python3
+EOF
+    exit 0
 }
 
 # --- Show Collections ---
@@ -217,7 +323,8 @@ show_collections() {
             --prompt="${MAGENTA}${BOLD}${ICON_PROMPT_COLLECTION}${RESET} Select collection (Page $((page+1))/$total_pages) > " \
             --height=100% \
             --reverse \
-            --border)
+            --border \
+            --cycle)
 
         # Strip ANSI codes for reliable case matching
         sanitized_selection=$(echo "$selection" | sed 's/\x1b\[[0-9;]*[mG]//g')
@@ -259,9 +366,43 @@ search_mode() {
     local preview_command='bash -c '\''fzf_previewer "$@"'\'' _ {1}'
 
     while true; do
-        query=$(printf '' | fzf --ansi --prompt="${MAGENTA}${BOLD}${ICON_SEARCH}${RESET} Type search query (ESC to return to main) > " --print-query --height=10 --reverse --border | head -n1)
+        # --- Prepare history and examples for fzf ---
+        local full_list=""
+        local history_content=""
+        if [ -s "$IA_SEARCH_HISTORY_FILE" ]; then
+            history_content=$(tac "$IA_SEARCH_HISTORY_FILE" | awk '!a[$0]++' | head -n 20)
+        fi
+
+        local examples="collection:anime_miscellaneous
+subject:japanese cinema
+mediatype:movies AND language:japanese
+mediatype:audio AND subject:album
+mediatype:image AND subject:magazine
+mediatype:texts AND subject:linux"
+
+        full_list=$(printf "%s\n%s" "$history_content" "$examples" | awk '!b[$0]++ {if (NF) print}')
+
+        # --- Get query from fzf ---
+        query=$(printf "%s\n" "$full_list" | fzf --ansi \
+            --prompt="${MAGENTA}${BOLD}${ICON_SEARCH}${RESET} Type search query (ESC to return) > " \
+            --print-query \
+            --height=100% \
+            --reverse \
+            --border \
+            --cycle \
+            --footer="${ICON_INFO} For more 'field' and 'mediatype' details, check ia-search --help")
+        
+        query=$(echo "$query" | tail -n 1)
+
         [ -z "$query" ] && return 0
 
+        # --- Update history file ---
+        if [ -s "$IA_SEARCH_HISTORY_FILE" ]; then
+            grep -Fxv -- "$query" "$IA_SEARCH_HISTORY_FILE" > "${IA_SEARCH_HISTORY_FILE}.tmp" && \
+            mv "${IA_SEARCH_HISTORY_FILE}.tmp" "$IA_SEARCH_HISTORY_FILE"
+        fi
+        echo "$query" >> "$IA_SEARCH_HISTORY_FILE"
+        
         page=1
         rows=30
 
@@ -275,10 +416,13 @@ search_mode() {
             if [ -f "$cache_file" ]; then
                 item_json=$(cat "$cache_file")
             else
-                item_json=$(ia search "$query" --field identifier --field title --sort="downloads desc" -p "page:$page" -p "rows:$rows")
-                if [ $? -eq 0 ] && [ -n "$item_json" ]; then
-                    echo "$item_json" > "$cache_file"
+                if ! item_json=$(ia search "$query" --field identifier --field title --sort="downloads desc" -p "page:$page" -p "rows:$rows"); then
+                    echo "❌ Error: 'ia search' command failed for query: $query. Check connection or command."
+                    sleep 3
+                    break
                 fi
+                echo "$item_json" > "$cache_file"
+
             fi
             if [ -z "$item_json" ]; then
                 echo "🚫 No results found for page $page."
@@ -317,7 +461,8 @@ search_mode() {
                 --delimiter=$'\t' \
                 --with-nth=2.. \
                 --preview-window=right:40% \
-                --preview "$preview_command")
+                --preview "$preview_command" \
+                --cycle)
             
             identifier_or_action=$(echo "$selected_line" | awk -F'\t' '{print $1}')
 
@@ -384,7 +529,8 @@ search_mode() {
                         --delimiter=$'\t' \
                         --with-nth=2.. \
                         --preview-window=right:40% \
-                        --preview "$preview_command")
+                        --preview "$preview_command" \
+                        --cycle)
                     
                     rm "$temp_combined_file"
 
@@ -421,14 +567,12 @@ browse_collection() {
         echo "${ICON_PROMPT_COLLECTION} Browsing collection: $coll (Page $page)..."
 
         local cache_file="$COLLECTIONS_CACHE_DIR/${coll}-page-${page}.json"
-        if [ -f "$cache_file" ]; then
-            item_json=$(cat "$cache_file")
-        else
-            item_json=$(ia search "collection:$coll" --field identifier --field title --sort="downloads desc" -p "page:$page" -p "rows:$rows")
-            if [ $? -eq 0 ] && [ -n "$item_json" ]; then
-                echo "$item_json" > "$cache_file"
-            fi
+        if ! item_json=$(ia search "collection:$coll" --field identifier --field title --sort="downloads desc" -p "page:$page" -p "rows:$rows"); then
+            echo "❌ Error: 'ia search' command failed for collection: $coll. Check connection or command."
+            sleep 3
+            break
         fi
+        echo "$item_json" > "$cache_file"
         if [ -z "$item_json" ]; then
             echo "🚫 No results found for page $page."
             if [ "$page" -eq 1 ]; then break; fi
@@ -465,7 +609,8 @@ browse_collection() {
             --delimiter=$'\t' \
             --with-nth=2.. \
             --preview-window=right:40% \
-            --preview "$preview_command")
+            --preview "$preview_command" \
+            --cycle)
 
         identifier_or_action=$(echo "$selected_line" | awk -F'\t' '{print $1}')
 
@@ -532,7 +677,8 @@ browse_collection() {
                         --delimiter=$'\t' \
                         --with-nth=2.. \
                         --preview-window=right:40% \
-                        --preview "$preview_command")
+                        --preview "$preview_command" \
+                        --cycle)
                 
                 rm "$temp_combined_file"
 
@@ -572,14 +718,11 @@ open_item() {
     # Helper function to extract a 'core' name for fuzzy matching
     get_core_name() {
         local input_name="$1"
-        # To lowercase, remove extension, remove bracketed/parenthesized content, 
-        # then keep only alphanumeric and spaces, and finally trim whitespace.
+        # To lowercase, remove extension, replace all non-alphanumeric chars with a space, squeeze spaces, and trim.
         echo "$input_name" | \
         tr '[:upper:]' '[:lower:]' | \
         sed -E 's/\.[^.]*$//' | \
-        sed -E 's/\[[^]]*\]//g' | \
-        sed -E 's/\([^)]*\)//g' | \
-        tr -cd '[:alnum:][:space:]' | \
+        tr -c '[:alnum:]' ' ' | \
         tr -s ' ' | \
         sed 's/^[[:space:]]*//;s/[[:space:]]*$//'
     }
@@ -594,7 +737,8 @@ open_item() {
             --prompt="${MAGENTA}${BOLD}${ICON_PROMPT_FILE}${RESET} Select a file to open (or back) > " \
             --height=100% \
             --reverse \
-            --border)
+            --border \
+            --cycle)
 
         local sanitized_filename
         sanitized_filename=$(echo "$filename" | sed 's/\x1b\[[0-9;]*[mG]//g')
@@ -616,7 +760,8 @@ open_item() {
             --prompt="${MAGENTA}${BOLD}${ICON_PROMPT_ACTION}${RESET} Choose action for $filename > " \
             --height=100% \
             --reverse \
-            --border)
+            --border \
+            --cycle)
 
         # Strip ANSI codes for reliable matching
         local sanitized_action
@@ -642,23 +787,40 @@ open_item() {
 
                     if [ -n "$video_core_name" ]; then
                         local best_match=""
-                        local min_len=9999
+                        local best_score=-1
+                        local min_diff=9999
                         
-                        # Filter for srt/ass files first to avoid unnecessary processing
                         local subtitle_candidates
-                        subtitle_candidates=$(echo "$file_list" | grep -E '\.(srt|ass)$')
+                        subtitle_candidates=$(echo "$file_list" | grep -E '\.(srt|ass|vtt)$')
 
                         while IFS= read -r sub_candidate; do
                             if [ -z "$sub_candidate" ]; then continue; fi
                             
                             local sub_core_name
                             sub_core_name=$(get_core_name "$sub_candidate")
+                            if [ -z "$sub_core_name" ]; then continue; fi
 
-                            # Check if video core name is a substring of sub core name
-                            if [[ "$sub_core_name" == *"$video_core_name"* ]]; then
-                                local current_len=${#sub_core_name}
-                                if [ "$current_len" -lt "$min_len" ]; then
-                                    min_len=$current_len
+                            # Calculate score based on common words
+                            local video_words=($video_core_name)
+                            local common_word_count=0
+                            for word in "${video_words[@]}"; do
+                                if [[ " $sub_core_name " =~ " $word " ]]; then
+                                    ((common_word_count++))
+                                fi
+                            done
+
+                            # Tie-breaking: use length difference
+                            local video_len=${#video_core_name}
+                            local sub_len=${#sub_core_name}
+                            local diff=$(( video_len > sub_len ? video_len - sub_len : sub_len - video_len ))
+
+                            if [ "$common_word_count" -gt "$best_score" ]; then
+                                best_score=$common_word_count
+                                min_diff=$diff
+                                best_match="$sub_candidate"
+                            elif [ "$common_word_count" -eq "$best_score" ] && [ "$common_word_count" -gt 0 ]; then
+                                if [ "$diff" -lt "$min_diff" ]; then
+                                    min_diff=$diff
                                     best_match="$sub_candidate"
                                 fi
                             fi
@@ -742,6 +904,11 @@ open_item() {
         fi
     done
 }
+
+# --- Argument Parsing ---
+if [ "$1" = "-h" ] || [ "$1" = "--help" ]; then
+    usage
+fi
 
 # --- Main ---
 check_deps
