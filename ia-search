@@ -197,19 +197,19 @@ SEARCH SYNTAX:
     The most common and reliable fields to use in your queries include:
 
     - mediatype:   The primary content type/category of the item.
-                   Example: mediatype:texts
+                   Example: mediatype:movies
     - title:       The title of the work.
-                   Example: title:"Maison Ikkoku"
+                   Example: title:"Floating weeds"
     - creator:     The person or entity that created the work.
-                   Example: creator:"Philip K. Dick"
+                   Example: creator:"yasujiro ozu"
     - subject:     Keywords, topics, or themes describing the content.
-                   Example: subject:"artix linux"
+                   Example: subject:"japanese cinema"
     - collection:  The collection(s) the item belongs to.
-                   Example: collection:prelingerarchives
+                   Example: collection:vhsmovies
     - date:        The publication date (often YYYY or YYYY-MM-DD).
                    Example: date:[1980 TO 1989]
     - language:    The language of the item's content.
-                   Example: language:eng
+                   Example: language:jpn
     - identifier:  The unique ID of the item (the last part of the URL).
                    Example: identifier:openlibrary
     - format:      The file format(s) available for the item.
