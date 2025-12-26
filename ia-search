@@ -107,7 +107,7 @@ fzf_previewer() {
     identifier=$(echo "$item_text" | awk -F'\t' '{print $1}')
 
     # Dont preview for navigation items
-    if [[ "$identifier" == "["* && "$identifier" == *"]"* ]]; then
+    if [[ "$identifier" == action_* ]]; then
         echo "Navigate with Enter. No item preview for options."
         return
     fi
@@ -352,7 +352,7 @@ show_collections() {
                 exit 0
                 ;;
             *)
-                collection=$(echo "$selection" | sed -E 's/.*\[(.*)\]$/\1/')
+                collection=$(echo "$selection" | sed -E 's/.*\[(.*)\].*/\1/')
                 browse_collection "$collection"
                 ;;
         esac
@@ -403,6 +403,13 @@ mediatype:texts AND subject:linux"
         fi
         echo "$query" >> "$IA_SEARCH_HISTORY_FILE"
         
+        local final_query
+        if [[ "$query" != *":"* ]]; then
+            final_query="title:\"$query\""
+        else
+            final_query="$query"
+        fi
+        
         page=1
         rows=30
 
@@ -410,14 +417,14 @@ mediatype:texts AND subject:linux"
             echo "${ICON_SEARCH} Searching for \"$query\" (Page $page)..."
             
             local query_hash
-            query_hash=$(echo -n "$query" | md5sum | cut -d' ' -f1)
+            query_hash=$(echo -n "$final_query" | md5sum | cut -d' ' -f1)
             local cache_file="$SEARCH_CACHE_DIR/${query_hash}-page-${page}.json"
 
             if [ -f "$cache_file" ]; then
                 item_json=$(cat "$cache_file")
             else
-                if ! item_json=$(ia search "$query" --field identifier --field title --sort="downloads desc" -p "page:$page" -p "rows:$rows"); then
-                    echo "❌ Error: 'ia search' command failed for query: $query. Check connection or command."
+                if ! item_json=$(ia search "$final_query" --field identifier --field title --sort "downloads desc" -p "page:$page" -p "rows:$rows"); then
+                    echo "❌ Error: 'ia search' command failed for query: $final_query. Check connection or command."
                     sleep 3
                     break
                 fi
@@ -436,14 +443,14 @@ mediatype:texts AND subject:linux"
             choices=()
             
             if [ "${#items[@]}" -eq "$rows" ]; then
-                choices+=("[${BLUE}${ICON_NEXT} Next page${RESET}]	[${BLUE}${ICON_NEXT} Next page${RESET}]")
+                choices+=($'action_next_page\t'"[${BLUE}${ICON_NEXT} Next page${RESET}]")
             fi
             if [ "$page" -gt 1 ]; then
-                 choices+=("[${BLUE}${ICON_PREV} Previous page${RESET}]	[${BLUE}${ICON_PREV} Previous page${RESET}]")
+                 choices+=($'action_prev_page\t'"[${BLUE}${ICON_PREV} Previous page${RESET}]")
             fi
-            choices+=("[${CYAN}${ICON_REFRESH} Refresh page${RESET}]	[${CYAN}${ICON_REFRESH} Refresh page${RESET}]")
-            choices+=("[${YELLOW}${ICON_SEARCH} Search all results${RESET}]	[${YELLOW}${ICON_SEARCH} Search all results${RESET}]")
-            choices+=("[${RED}${ICON_EXIT} Back to main${RESET}]	[${RED}${ICON_EXIT} Back to main${RESET}]")
+            choices+=($'action_refresh\t'"[${CYAN}${ICON_REFRESH} Refresh page${RESET}]")
+            choices+=($'action_search_all\t'"[${YELLOW}${ICON_SEARCH} Search all results${RESET}]")
+            choices+=($'action_back\t'"[${RED}${ICON_EXIT} Back to main${RESET}]")
 
             # Use a simple empty string for the gap, like the original script
             if [ "${#choices[@]}" -gt 0 ]; then
@@ -470,32 +477,36 @@ mediatype:texts AND subject:linux"
                 break
             fi
 
-            # Strip ANSI codes for reliable case matching
-            sanitized_action=$(echo "$identifier_or_action" | sed 's/\x1b\[[0-9;]*[mG]//g')
-
-            case "$sanitized_action" in
-                "[${ICON_REFRESH} Refresh page]")
+            case "$identifier_or_action" in
+                "action_refresh")
                     if [ -f "$cache_file" ]; then
                         rm "$cache_file"
                         echo "✅ Page cache cleared. Refreshing..."
                     fi
                     continue
                     ;;
-                "[${ICON_NEXT} Next page]")
+                "action_next_page")
                     ((page++))
                     ;;
-                "[${ICON_PREV} Previous page]")
+                "action_prev_page")
                     if [ "$page" -gt 1 ]; then
                         ((page--))
                     fi
                     ;;
-                "[${ICON_SEARCH} Search all results]")
+                "action_search_all")
                     local sub_query_text
                     sub_query_text=$(printf '' | fzf --ansi --prompt="${MAGENTA}${BOLD}${ICON_SEARCH}${RESET} Search within results for '$query': " --print-query --height=10 --reverse --border | head -n1)
                     [ -z "$sub_query_text" ] && continue
 
+                    local sub_query_fragment
+                    if [[ "$sub_query_text" != *":"* ]]; then
+                        sub_query_fragment="title:\"$sub_query_text\""
+                    else
+                        sub_query_fragment="$sub_query_text"
+                    fi
+
                     echo "🔎 Searching for \"$query AND $sub_query_text\"..."
-                    local combined_query="$query AND $sub_query_text"
+                    local combined_query="$final_query AND $sub_query_fragment"
                     local total_combined_hits
                     total_combined_hits=$(ia search "$combined_query" --num-found)
 
@@ -541,7 +552,7 @@ mediatype:texts AND subject:linux"
                     fi
                     break
                     ;;
-                "[${ICON_EXIT} Back to main]")
+                "action_back")
                     return
                     ;;
                 *)
@@ -567,7 +578,7 @@ browse_collection() {
         echo "${ICON_PROMPT_COLLECTION} Browsing collection: $coll (Page $page)..."
 
         local cache_file="$COLLECTIONS_CACHE_DIR/${coll}-page-${page}.json"
-        if ! item_json=$(ia search "collection:$coll" --field identifier --field title --sort="downloads desc" -p "page:$page" -p "rows:$rows"); then
+        if ! item_json=$(ia search "collection:$coll" --field identifier --field title --sort "downloads desc" -p "page:$page" -p "rows:$rows"); then
             echo "❌ Error: 'ia search' command failed for collection: $coll. Check connection or command."
             sleep 3
             break
@@ -584,14 +595,14 @@ browse_collection() {
         choices=()
         
         if [ "${#items[@]}" -eq "$rows" ]; then
-            choices+=("[${BLUE}${ICON_NEXT} Next page${RESET}]	[${BLUE}${ICON_NEXT} Next page${RESET}]")
+            choices+=($'action_next_page\t'"[${BLUE}${ICON_NEXT} Next page${RESET}]")
         fi
         if [ "$page" -gt 1 ]; then
-            choices+=("[${BLUE}${ICON_PREV} Previous page${RESET}]	[${BLUE}${ICON_PREV} Previous page${RESET}]")
+             choices+=($'action_prev_page\t'"[${BLUE}${ICON_PREV} Previous page${RESET}]")
         fi
-        choices+=("[${CYAN}${ICON_REFRESH} Refresh page${RESET}]	[${CYAN}${ICON_REFRESH} Refresh page${RESET}]")
-        choices+=("[${YELLOW}${ICON_SEARCH} Search all results${RESET}]	[${YELLOW}${ICON_SEARCH} Search all results${RESET}]")
-        choices+=("[${RED}${ICON_EXIT} Back to main${RESET}]	[${RED}${ICON_EXIT} Back to main${RESET}]")
+        choices+=($'action_refresh\t'"[${CYAN}${ICON_REFRESH} Refresh page${RESET}]")
+        choices+=($'action_search_all\t'"[${YELLOW}${ICON_SEARCH} Search all results${RESET}]")
+        choices+=($'action_back\t'"[${RED}${ICON_EXIT} Back to main${RESET}]")
 
         # Use a simple empty string for the gap, like the original script
         if [ "${#choices[@]}" -gt 0 ]; then
@@ -618,32 +629,36 @@ browse_collection() {
             return
         fi
 
-        # Strip ANSI codes for reliable case matching
-        sanitized_action=$(echo "$identifier_or_action" | sed 's/\x1b\[[0-9;]*[mG]//g')
-
-        case "$sanitized_action" in
-            "[${ICON_REFRESH} Refresh page]")
+        case "$identifier_or_action" in
+            "action_refresh")
                 if [ -f "$cache_file" ]; then
                     rm "$cache_file"
                     echo "✅ Page cache cleared. Refreshing..."
                 fi
                 continue
                 ;;
-            "[${ICON_NEXT} Next page]")
+            "action_next_page")
                 ((page++))
                 ;;
-            "[${ICON_PREV} Previous page]")
+            "action_prev_page")
                 if [ "$page" -gt 1 ]; then
                     ((page--))
                 fi
                 ;;
-            "[${ICON_SEARCH} Search all results]")
+            "action_search_all")
                 local sub_query_text
                 sub_query_text=$(printf '' | fzf --ansi --prompt="${MAGENTA}${BOLD}${ICON_SEARCH}${RESET} Search within collection '$coll': " --print-query --height=10 --reverse --border | head -n1)
                 [ -z "$sub_query_text" ] && continue
 
+                local sub_query_fragment
+                if [[ "$sub_query_text" != *":"* ]]; then
+                    sub_query_fragment="title:\"$sub_query_text\""
+                else
+                    sub_query_fragment="$sub_query_text"
+                fi
+
                 echo "🔎 Searching for \"collection:$coll AND $sub_query_text\"..."
-                local combined_query="collection:$coll AND $sub_query_text"
+                local combined_query="collection:$coll AND $sub_query_fragment"
                 local total_combined_hits
                 total_combined_hits=$(ia search "$combined_query" --num-found)
 
@@ -689,7 +704,7 @@ browse_collection() {
                 fi
                 return
                 ;;
-            "[${ICON_EXIT} Back to main]")
+            "action_back")
                 return
                 ;;
             " ")
@@ -750,8 +765,8 @@ open_item() {
         local action_label
         case "$filename" in
             *.mp4|*.mkv|*.avi|*.webm|*.flv|*.ogv|*.mp3|*.ogg|*.flac|*.wav|*.m4a)
-                action_label="${CYAN}${ICON_PLAY} Play${RESET}" ;;
-            *) action_label="${CYAN}${ICON_OPEN} Open${RESET}" ;;
+                action_label="${CYAN}${ICON_PLAY} Play${RESET}" ;; 
+            *) action_label="${CYAN}${ICON_OPEN} Open${RESET}" ;; 
         esac
 
         local action
@@ -801,7 +816,7 @@ open_item() {
                             if [ -z "$sub_core_name" ]; then continue; fi
 
                             # Calculate score based on common words
-                            local video_words=($video_core_name)
+                            local video_words=("$video_core_name")
                             local common_word_count=0
                             for word in "${video_words[@]}"; do
                                 if [[ " $sub_core_name " =~ " $word " ]]; then
@@ -873,11 +888,12 @@ open_item() {
 
                 *.mp3|*.ogg|*.flac|*.wav|*.m4a)
                     echo "🎧 Playing audio..."
-                    $AUDIO_PLAYER "$url" >/dev/null 2>&1 & ;;
+                    $AUDIO_PLAYER "$url" >/dev/null 2>&1 &
+                    ;;
                 *.png|*.jpg|*.jpeg|*.gif|*.bmp)
-                    download_and_view "$url" "$IMAGE_VIEWER" ;;
+                    download_and_view "$url" "$IMAGE_VIEWER" ;; 
                 *.pdf)
-                    download_and_view "$url" "$PDF_VIEWER" ;;
+                    download_and_view "$url" "$PDF_VIEWER" ;; 
                 *.txt|*.md|*.rst|*.csv|*.log|*.tex|*.sh|*.py|*.c|*.cpp|*.h|*.java|*.js|*.ts|*.json|*.xml|*.yaml|*.yml|*.ini|*.conf|*.cfg)
                     local temp_file
                     temp_file=$(mktemp)
@@ -887,7 +903,7 @@ open_item() {
                         rm -f "$temp_file"
                     else
                         echo "🚫 Failed to fetch $filename"
-                    fi ;;
+                    fi ;; 
                 *)
                     xdg-open "$url" >/dev/null 2>&1 &
                     ;;
@@ -895,9 +911,9 @@ open_item() {
         elif [ "$sanitized_action" == "${ICON_DOWNLOAD} Download" ]; then
             case "$filename" in
                 *.mp4|*.mkv|*.avi|*.webm|*.flv|*.ogv)
-                    $VIDEO_DOWNLOADER "$url" ;;
+                    $VIDEO_DOWNLOADER "$url" ;; 
                 *)
-                    curl -L -o "$filename" "$url" ;;
+                    curl -L -o "$filename" "$url" ;; 
             esac
             echo "✅ Done. Press Enter to continue."
             read -r
