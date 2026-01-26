@@ -3,13 +3,9 @@
 An interactive terminal browser and downloader for the **Internet Archive**. Built with `fzf` and the `ia` tool to search, play, and download media without leaving the shell.
 
 ---
-
-<img width="1500" height="964" alt="01" src="[https://github.com/user-attachments/assets/c40b43e2-3809-40bb-9634-9c285048adaf](https://github.com/user-attachments/assets/c40b43e2-3809-40bb-9634-9c285048adaf)" />
-
-<img width="1500" height="964" alt="02" src="[https://github.com/user-attachments/assets/406ca273-30a1-4e73-9143-f00f5f1eb977](https://github.com/user-attachments/assets/406ca273-30a1-4e73-9143-f00f5f1eb977)" />
-
-<img width="1500" height="964" alt="03" src="[https://github.com/user-attachments/assets/dab57414-7896-472f-b0c7-bd84677a6f89](https://github.com/user-attachments/assets/dab57414-7896-472f-b0c7-bd84677a6f89)" />
-
+<img width="1460" height="934" alt="Screenshot from 2026-01-26 22-08-43" src="https://github.com/user-attachments/assets/f14f9eb7-b4b6-4bf3-8551-0be599b84683" />
+<img width="1460" height="934" alt="Screenshot from 2026-01-26 22-12-17" src="https://github.com/user-attachments/assets/aeca883f-8a93-4a8c-abb4-77ee6ef241d5" />
+<img width="1460" height="934" alt="Screenshot from 2026-01-26 22-11-17" src="https://github.com/user-attachments/assets/a040a057-acd0-4b94-8f97-0d60341713a1" />
 ---
 
 ## 󱓞 Features
