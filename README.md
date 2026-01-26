@@ -1,128 +1,145 @@
-# 🎬 ia-search
+# 󰋜 ia-search
 
-**ia-search** is an interactive terminal browser and downloader for the **Internet Archive**, powered by `fzf` and `ia`. It lets you **browse**, **search**, **play**, and **download** media directly from your terminal.
-
----
-
-<img width="1500" height="964" alt="01" src="https://github.com/user-attachments/assets/c40b43e2-3809-40bb-9634-9c285048adaf" />
-
-<img width="1500" height="964" alt="02" src="https://github.com/user-attachments/assets/406ca273-30a1-4e73-9143-f00f5f1eb977" />
-
-<img width="1500" height="964" alt="03" src="https://github.com/user-attachments/assets/dab57414-7896-472f-b0c7-bd84677a6f89" />
+An interactive terminal browser and downloader for the **Internet Archive**. Built with `fzf` and the `ia` tool to search, play, and download media without leaving the shell.
 
 ---
 
-## ✨ Features
+<img width="1500" height="964" alt="01" src="[https://github.com/user-attachments/assets/c40b43e2-3809-40bb-9634-9c285048adaf](https://github.com/user-attachments/assets/c40b43e2-3809-40bb-9634-9c285048adaf)" />
 
--   **Interactive Menus**: Navigate collections, search results, and files using `fzf` with full cycling (scrolling loops around).
--   **Powerful Search**:
-    *   **Search History & Examples**: The search prompt displays your recent queries and a list of useful examples to get you started.
-    *   **Comprehensive Help**: A built-in `--help` command provides a detailed guide on all available search fields (`mediatype`, `subject`, `creator`, etc.) and syntax.
-    *   **Sub-Searching**: Efficiently drill down into large collections or broad queries without loading massive lists.
--   **Smart Previews & Media Handling**:
-    *   **Live Previews**: See a list of files within an item as you browse. Previews are now smarter and will re-fetch if they fail to load.
-    *   **Robust Subtitle Matching**: Automatically finds and loads the best matching subtitle file (`.srt`, `.ass`, `.vtt`) for videos, even with complex filenames.
-    *   **Multi-Format Player**: Plays videos/audio (`mpv`), views images (`nsxiv`), and opens PDFs (`zathura`) directly.
--   **Robust & User-Friendly**:
-    *   **Paginated Results**: All results are loaded in pages for a fast and responsive experience.
-    *   **Clear Error Handling**: The script now clearly distinguishes between a failed search (e.g., network error) and a search with no results.
-    *   **Downloader Integration**: Download videos with `yt-dlp` or any other file with `curl`.
-    *   **Customizable**: Easily change default viewers, icons, and colors by editing variables at the top of the script.
+<img width="1500" height="964" alt="02" src="[https://github.com/user-attachments/assets/406ca273-30a1-4e73-9143-f00f5f1eb977](https://github.com/user-attachments/assets/406ca273-30a1-4e73-9143-f00f5f1eb977)" />
+
+<img width="1500" height="964" alt="03" src="[https://github.com/user-attachments/assets/dab57414-7896-472f-b0c7-bd84677a6f89](https://github.com/user-attachments/assets/dab57414-7896-472f-b0c7-bd84677a6f89)" />
 
 ---
 
-## 🔧 Installation
+## 󱓞 Features
 
-1.  Make sure you have all the dependencies installed (see list below).
-2.  Save the script as `ia-search` in a directory in your `$PATH` (e.g., `~/.local/bin/`).
-3.  Make it executable: `chmod +x ~/.local/bin/ia-search`
+* **󰍜 Interactive Menus**: Uses `fzf` to navigate collections and search results with infinite scrolling.
+* ** Search Options**:
+* **History & Examples**: The prompt displays your recent queries and useful example searches.
+* **Help Guide**: Built-in `--help` command lists all searchable fields like `mediatype` and `creator`.
+* **Sub-Searching**: Narrow down large collections or results without reloading the whole list.
+
+
+* **󰬈 Media & Previews**:
+* **File Previews**: View files within an item before playing/downloading. Auto-retries if a fetch fails.
+* **Subtitle Support**: Automatically finds and loads matching `.srt`, `.ass`, or `.vtt` files in `mpv`.
+* **Integrated Players**: Opens video/audio in `mpv`, images in `nsxiv`, and PDFs in `zathura`.
+
+
+* **󰗀 Functional Tools**:
+* **Pagination**: Results load in pages to keep the interface fast and responsive.
+* **Downloads**: Pull videos with `yt-dlp` or any specific file using `curl`.
+* **Customizable**: Change your default players and icons at the top of the script.
+
+
 
 ---
 
-## 🧭 Usage
+## 󰘳 Installation
 
-### Running The Script
-Simply run the script from your terminal:
+1. Install the dependencies listed below.
+2. Move the script to your `$PATH`:
+
+```bash
+cp ia-search ~/.local/bin/
+
+```
+
+3. Make it executable:
+
+```bash
+chmod +x ~/.local/bin/ia-search
+
+```
+
+---
+
+## 󰙔 Usage
+
+Run the script:
+
 ```bash
 ia-search
+
 ```
 
-### Getting Help
-For a detailed guide on search syntax, fields, and mediatypes, use the `--help` flag:
+Check the search syntax guide:
+
 ```bash
 ia-search --help
+
 ```
 
-### Main Menu & Searching
-The script starts with a list of top collections. From here you can:
--   **Select a collection** to browse its contents.
--   Select **`[🔍 Search all collections]`** to open the search prompt.
+### Browsing
 
-The search prompt is now powered by your history. It shows:
--   Your most recent unique searches.
--   A list of helpful example queries.
-
-You can select an entry from the list or just start typing to create a new query. Your new searches will be saved for the next session.
+Pick a collection from the main menu or select **`[🔍 Search all collections]`** to start a query. The search prompt saves your history so you can quickly re-run previous searches or pick from the examples.
 
 ---
 
-## 🔬 Search Guide
+## 󰍉 Search Guide
 
-The search prompt accepts standard Internet Archive advanced search queries.
+Queries use the standard `field:value` syntax. Combine terms with `AND`, `OR`, or `NOT`.
 
--   **Syntax**: `field:value`
--   **Combining Terms**: Use `AND`, `OR`, `NOT` (e.g., `mediatype:movies AND language:jpn`)
-
-#### Common Searchable Fields
+#### Common Fields
 
 | Field | Description | Example |
-| :--- | :--- | :--- |
-| `mediatype` | The primary content category. | `mediatype:movies` |
-| `title` | The title of the work. | `title:"Floating weeds"` |
-| `creator` | The author, director, artist, etc. | `creator:"yasujiro ozu"` |
-| `subject` | Keywords, topics, or themes. | `subject:"japanese cinema"` |
-| `collection` | The collection the item belongs to. | `collection:vhsmovies` |
-| `date` | The publication date. | `date:[1980 TO 1989]` |
-| `language` | The language of the content (ISO 639-2 code). | `language:jpn` |
+| --- | --- | --- |
+| `mediatype` | Content category | `mediatype:movies` |
+| `title` | Work title | `title:"Floating weeds"` |
+| `creator` | Author/Director | `creator:"yasujiro ozu"` |
+| `subject` | Keywords/Themes | `subject:"japanese cinema"` |
+| `collection` | Specific collection | `collection:vhsmovies` |
+| `date` | Publication year | `date:[1980 TO 1989]` |
+| `language` | ISO 639-2 code | `language:jpn` |
 
-#### Common `mediatype` Values
--   `texts` (Books, documents)
--   `audio` (Music, podcasts)
--   `movies` (Videos, films)
--   `software` (Games, applications)
--   `image` (Photos, artwork)
+#### Mediatypes
 
-#### Common `language` Codes (ISO 639-2)
--   **English**: `eng`
--   **Japanese**: `jpn`
--   **French**: `fre`
--   **German**: `ger`
--   **Chinese**: `zho`
+* `texts` (Books/Documents)
+* `audio` (Music/Podcasts)
+* `movies` (Video/Films)
+* `software` (Games/Apps)
+* `image` (Photos/Art)
 
----
+#### Language Codes (ISO 639-2)
 
-## ⚙️ Dependencies
-
--   `ia` (Internet Archive CLI)
--   `fzf`
--   `jq`
--   `pv`
--   `mpv`
--   `nsxiv` (or your configured image viewer)
--   `zathura` (or your configured PDF viewer)
--   `yt-dlp`
--   `curl`
--   `python3`
+* **English**: `eng`
+* **Japanese**: `jpn`
+* **French**: `fre`
+* **German**: `ger`
+* **Chinese**: `zho`
 
 ---
 
-## 🧩 Configuration
+## 󰚦 Dependencies
 
-You can easily change the default media players by editing the variables at the top of the script:
+### Core
+
+* `ia` (Internet Archive CLI) — Metadata and searching.
+* `fzf` — Interactive menus and filtering.
+* `jq` — JSON parsing.
+* `curl` / `pv` — Downloading and progress bars.
+* `python3` — Logic and search history.
+
+### Media Viewers (Optional)
+
+* `mpv` — Video and audio playback.
+* `nsxiv` — Image viewing.
+* `zathura` — PDF reading.
+* `yt-dlp` — For video downloads.
+
+---
+
+## 󰒓 Configuration
+
+You can change the default apps by editing the variables at the top of the script:
+
 ```bash
 VIDEO_PLAYER="mpv"
 AUDIO_PLAYER="mpv"
 IMAGE_VIEWER="nsxiv"
 PDF_VIEWER="zathura"
 VIDEO_DOWNLOADER="yt-dlp"
+
 ```
+
