@@ -4,7 +4,9 @@ An interactive terminal browser and downloader for the **Internet Archive**. Bui
 
 ---
 <img width="1460" height="934" alt="Screenshot from 2026-01-26 22-08-43" src="https://github.com/user-attachments/assets/f14f9eb7-b4b6-4bf3-8551-0be599b84683" />
+
 <img width="1460" height="934" alt="Screenshot from 2026-01-26 22-12-17" src="https://github.com/user-attachments/assets/aeca883f-8a93-4a8c-abb4-77ee6ef241d5" />
+
 <img width="1460" height="934" alt="Screenshot from 2026-01-26 22-11-17" src="https://github.com/user-attachments/assets/a040a057-acd0-4b94-7f97-0d60341713a1" />
 ---
 
