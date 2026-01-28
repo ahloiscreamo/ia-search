@@ -1,29 +1,29 @@
-# 󰋜 ia-search
+# ia-search
 
 An interactive terminal browser and downloader for the **Internet Archive**. Built with `fzf` and the `ia` tool to search, play, and download media without leaving the shell.
 
 ---
 <img width="1460" height="934" alt="Screenshot from 2026-01-26 22-08-43" src="https://github.com/user-attachments/assets/f14f9eb7-b4b6-4bf3-8551-0be599b84683" />
 <img width="1460" height="934" alt="Screenshot from 2026-01-26 22-12-17" src="https://github.com/user-attachments/assets/aeca883f-8a93-4a8c-abb4-77ee6ef241d5" />
-<img width="1460" height="934" alt="Screenshot from 2026-01-26 22-11-17" src="https://github.com/user-attachments/assets/a040a057-acd0-4b94-8f97-0d60341713a1" />
+<img width="1460" height="934" alt="Screenshot from 2026-01-26 22-11-17" src="https://github.com/user-attachments/assets/a040a057-acd0-4b94-7f97-0d60341713a1" />
 ---
 
-## 󱓞 Features
+## Features
 
-* **󰍜 Interactive Menus**: Uses `fzf` to navigate collections and search results with infinite scrolling.
+* **Interactive Menus**: Uses `fzf` to navigate collections and search results with infinite scrolling.
 * ** Search Options**:
 * **History & Examples**: The prompt displays your recent queries and useful example searches.
 * **Help Guide**: Built-in `--help` command lists all searchable fields like `mediatype` and `creator`.
 * **Sub-Searching**: Narrow down large collections or results without reloading the whole list.
 
 
-* **󰬈 Media & Previews**:
+* **Media & Previews**:
 * **File Previews**: View files within an item before playing/downloading. Auto-retries if a fetch fails.
 * **Subtitle Support**: Automatically finds and loads matching `.srt`, `.ass`, or `.vtt` files in `mpv`.
 * **Integrated Players**: Opens video/audio in `mpv`, images in `nsxiv`, and PDFs in `zathura`.
 
 
-* **󰗀 Functional Tools**:
+* **Functional Tools**:
 * **Pagination**: Results load in pages to keep the interface fast and responsive.
 * **Downloads**: Pull videos with `yt-dlp` or any specific file using `curl`.
 * **Customizable**: Change your default players and icons at the top of the script.
@@ -32,7 +32,7 @@ An interactive terminal browser and downloader for the **Internet Archive**. Bui
 
 ---
 
-## 󰘳 Installation
+## Installation
 
 1. Install the dependencies listed below.
 2. Move the script to your `$PATH`:
@@ -51,7 +51,7 @@ chmod +x ~/.local/bin/ia-search
 
 ---
 
-## 󰙔 Usage
+## Usage
 
 Run the script:
 
@@ -73,7 +73,7 @@ Pick a collection from the main menu or select **`[🔍 Search all collections]`
 
 ---
 
-## 󰍉 Search Guide
+## Search Guide
 
 Queries use the standard `field:value` syntax. Combine terms with `AND`, `OR`, or `NOT`.
 
@@ -107,7 +107,7 @@ Queries use the standard `field:value` syntax. Combine terms with `AND`, `OR`, o
 
 ---
 
-## 󰚦 Dependencies
+## Dependencies
 
 ### Core
 
@@ -126,7 +126,7 @@ Queries use the standard `field:value` syntax. Combine terms with `AND`, `OR`, o
 
 ---
 
-## 󰒓 Configuration
+## Configuration
 
 You can change the default apps by editing the variables at the top of the script:
 
@@ -138,4 +138,3 @@ PDF_VIEWER="zathura"
 VIDEO_DOWNLOADER="yt-dlp"
 
 ```
-
