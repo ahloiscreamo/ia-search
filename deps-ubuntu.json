@@ -11,6 +11,26 @@
       "package": "fzf"
     },
     {
+      "tool": "jq",
+      "manager": "apt",
+      "package": "jq"
+    },
+    {
+      "tool": "curl",
+      "manager": "apt",
+      "package": "curl"
+    },
+    {
+      "tool": "pv",
+      "manager": "apt",
+      "package": "pv"
+    },
+    {
+      "tool": "python3",
+      "manager": "apt",
+      "package": "python3"
+    },
+    {
       "tool": "mpv",
       "manager": "apt",
       "package": "mpv"
@@ -26,20 +46,14 @@
       "package": "zathura"
     },
     {
+      "tool": "vim",
+      "manager": "apt",
+      "package": "vim"
+    },
+    {
       "tool": "yt-dlp",
       "manager": "apt",
       "package": "yt-dlp"
-    },
-    {
-      "tool": "curl",
-      "manager": "apt",
-      "package": "curl"
-    },
-    {
-      "tool": "pv",
-      "manager": "apt",
-      "package": "pv"
     }
   ]
 }
-
