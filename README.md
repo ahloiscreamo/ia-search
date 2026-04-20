@@ -2,9 +2,9 @@
 An interactive terminal browser and downloader for the **Internet Archive**. Built with `fzf` and the `ia` tool to search, play, and download media without leaving the shell.
 
 ---
-<img width="1460" height="934" alt="Screenshot from 2026-01-26 22-08-43" src="https://github.com/user-attachments/assets/f14f9eb7-b4b6-4bf3-8551-0be599b84683" />
-<img width="1460" height="934" alt="Screenshot from 2026-01-26 22-12-17" src="https://github.com/user-attachments/assets/aeca883f-8a93-4a8c-abb4-77ee6ef241d5" />
-<img width="1460" height="934" alt="Screenshot from 2026-01-26 22-11-17" src="https://github.com/user-attachments/assets/7792cd32-d4a2-4c5c-96da-80977aca7260" />
+<img width="1920" height="1080" alt="Screenshot from 2026-04-20 21-01-45" src="https://github.com/user-attachments/assets/08fb5412-7331-4da3-b10c-facd9879ad99" />
+<img width="1920" height="1080" alt="Screenshot from 2026-04-20 21-54-21" src="https://github.com/user-attachments/assets/8c3d2449-f06f-4486-9be0-0e413b75739e" />
+<img width="1920" height="1080" alt="Screenshot from 2026-04-20 21-56-46" src="https://github.com/user-attachments/assets/6b104475-2284-4a93-996a-829e7a0127a1" />
 
 ---
 ## Features
