@@ -466,13 +466,20 @@ search_mode() {
             history_content=$(tac "$IA_SEARCH_HISTORY_FILE" | awk '!a[$0]++' | head -n 20)
         fi
 
-        local examples="collection:anime_miscellaneous
+        local examples='collection:anime_miscellaneous
 subject:japanese cinema
-mediatype:movies AND language:japanese
+mediatype:movies AND language:jpn
+mediatype:movies AND language:chi
+mediatype:movies AND creator:"wong kar wai"
+mediatype:movies AND creator:"edward yang"
+mediatype:movies AND creator:"yasujiro ozu"
 mediatype:audio AND subject:album
 mediatype:image AND subject:magazine
 mediatype:texts AND subject:linux
-uploader:some_username"
+mediatype:texts AND language:jpn AND subject:magazine
+collection:magazine_rack AND language:jpn
+subject:gravure AND mediatype:image
+uploader:some_username'       
 
         full_list=$(printf "%s\n%s" "$history_content" "$examples" | awk '!b[$0]++ {if (NF) print}')
 

@@ -94,6 +94,56 @@ Queries use the standard `field:value` syntax. Combine terms with `AND`, `OR`, o
 * **Spanish**: `spa`
 * **Korean**: `kor`
 
+## Examples
+
+#### Finding Movies by Director
+```bash
+mediatype:movies AND creator:"yasujiro ozu"
+mediatype:movies AND creator:"wong kar wai"
+mediatype:movies AND creator:"edward yang"
+```
+
+#### Finding Movies by Language
+```bash
+mediatype:movies AND language:jpn
+mediatype:movies AND language:chi
+```
+
+#### Finding Japanese Magazines
+```bash
+mediatype:texts AND language:jpn AND subject:magazine
+collection:magazine_rack AND language:jpn
+```
+
+#### Finding Image Galleries
+```bash
+mediatype:image AND subject:magazine
+subject:gravure AND mediatype:image
+```
+
+#### Finding by Collection
+```bash
+collection:anime_miscellaneous
+collection:pub_playboy
+collection:magazine_rack
+```
+
+#### Finding Audio
+```bash
+mediatype:audio AND subject:album
+mediatype:audio AND language:jpn
+```
+
+#### Finding Texts
+```bash
+mediatype:texts AND subject:linux
+mediatype:texts AND language:jpn
+```
+
+#### Finding by Uploader
+```bash
+uploader:someuser
+```
 ---
 ## Dependencies
 ### Core
