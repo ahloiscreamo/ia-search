@@ -1086,13 +1086,20 @@ open_item() {
                     ;;
             esac
         elif [ "$sanitized_action" == "${ICON_DOWNLOAD} Download" ]; then
+            local download_status
             case "$filename" in
                 *.mp4|*.mkv|*.avi|*.webm|*.flv|*.ogv)
-                    $VIDEO_DOWNLOADER "$url" ;; 
+                    "$VIDEO_DOWNLOADER" --output '%(title).180B.%(ext)s' "$url"
+                    download_status=$? ;;
                 *)
-                    curl -L -o "$filename" "$url" ;; 
+                    curl -fL -o "$filename" "$url"
+                    download_status=$? ;;
             esac
-            echo "${ICON_SUCCESS} Done. Press Enter to continue."
+            if [ "$download_status" -eq 0 ]; then
+                echo "${ICON_SUCCESS} Done. Press Enter to continue."
+            else
+                echo "${ICON_ERROR} Download failed. Press Enter to continue."
+            fi
             read -r
         elif [ "$sanitized_action" == "${ICON_OPEN} Open all images" ]; then
             open_all_images "$identifier" "$file_list"
