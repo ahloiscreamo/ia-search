@@ -5,7 +5,24 @@
 # --- Player Config ---
 VIDEO_PLAYER="mpv"
 AUDIO_PLAYER="mpv"
-IMAGE_VIEWER="nsxiv" #or imv (wayland)
+# Prefer a native viewer for the current desktop session.
+select_image_viewer() {
+    local candidate
+    local -a candidates
+    if [[ "${XDG_SESSION_TYPE:-}" == "wayland" ]] || { [[ "${XDG_SESSION_TYPE:-}" != "x11" ]] && [[ -n "${WAYLAND_DISPLAY:-}" ]]; }; then
+        candidates=(swayimg imv imv-dir)
+    else
+        candidates=(nsxiv sxiv)
+    fi
+    IMAGE_VIEWER="${candidates[0]}"
+    for candidate in "${candidates[@]}"; do
+        if command -v "$candidate" >/dev/null 2>&1; then
+            IMAGE_VIEWER="$candidate"
+            return 0
+        fi
+    done
+}
+select_image_viewer
 PDF_VIEWER="zathura"
 EPUB_VIEWER="zathura"
 TEXT_VIEWER="vim"
@@ -89,6 +106,9 @@ FZF_FOOTER_SEARCH="${ICON_INFO} Ctrl+E to search exact query | For 'field' and '
 # --- API Config ---
 API_URL="https://archive.org/advancedsearch.php"
 
+# --- Download Config ---
+DOWNLOAD_BASE_DIR="$HOME/Downloads/ia-downloads"
+
 # --- Cache Config ---
 export CACHE_BASE_DIR="$HOME/.cache/ia-search"
 export COLLECTIONS_CACHE_DIR="$CACHE_BASE_DIR/collections"
@@ -108,7 +128,7 @@ export CACHE_EXPIRY=$((60*60*24*7)) # 7 days
 # --- Dependency Check ---
 check_deps() {
     local missing=0
-    for cmd in fzf jq curl ia pv mpv nsxiv zathura yt-dlp python3 vim; do
+    for cmd in fzf jq curl ia pv mpv "$IMAGE_VIEWER" zathura yt-dlp python3 vim; do
         if ! command -v "$cmd" &> /dev/null; then
             echo "${ICON_ERROR} Error: Required command '$cmd' is not installed."
             missing=1
@@ -213,8 +233,10 @@ open_all_images() {
     fi
     echo "${ICON_IMAGE} Found ${#image_files[@]} images. Downloading..."
     local temp_dir
-    temp_dir="$HOME/Downloads/ia-downloads/$identifier"
-    mkdir -p "$temp_dir"
+    local item_dir="$DOWNLOAD_BASE_DIR/$identifier"
+    mkdir -p "$item_dir" || return 1
+    # Isolate image cleanup from other saved downloads for this item.
+    temp_dir=$(mktemp -d "$item_dir/images-XXXXXX") || return 1
     # Download using ia download
     (ia download "$identifier" \
         --destdir="$temp_dir" \
@@ -354,7 +376,8 @@ KEYBINDINGS:
     Enter     Select the highlighted item.
 
 DEPENDENCIES:
-    fzf, jq, curl, ia, pv, mpv, nsxiv, zathura, yt-dlp, python3, vim
+    fzf, jq, curl, ia, pv, mpv, zathura, yt-dlp, python3, vim
+    Images: swayimg, imv, or imv-dir on Wayland; nsxiv or sxiv on X11.
 EOF
     exit 0
 }
@@ -1087,16 +1110,23 @@ open_item() {
             esac
         elif [ "$sanitized_action" == "${ICON_DOWNLOAD} Download" ]; then
             local download_status
+            local download_dir="$DOWNLOAD_BASE_DIR/$identifier"
+            if ! mkdir -p "$download_dir/$(dirname -- "$filename")"; then
+                echo "${ICON_ERROR} Cannot create download directory: $download_dir"
+                read -r -p "Press Enter to continue."
+                continue
+            fi
             case "$filename" in
                 *.mp4|*.mkv|*.avi|*.webm|*.flv|*.ogv)
-                    "$VIDEO_DOWNLOADER" --output '%(title).180B.%(ext)s' "$url"
+                    "$VIDEO_DOWNLOADER" --paths "$download_dir" --output '%(title).180B.%(ext)s' "$url"
                     download_status=$? ;;
                 *)
-                    curl -fL -o "$filename" "$url"
+                    curl -fL -o "$download_dir/$filename" "$url"
                     download_status=$? ;;
             esac
             if [ "$download_status" -eq 0 ]; then
-                echo "${ICON_SUCCESS} Done. Press Enter to continue."
+                echo "${ICON_SUCCESS} Saved in: $download_dir"
+                echo "Press Enter to continue."
             else
                 echo "${ICON_ERROR} Download failed. Press Enter to continue."
             fi
