@@ -2,7 +2,7 @@
   "dependencies": [
     {
       "tool": "ia",
-      "manager": "pip",
+      "manager": "pipx",
       "package": "internetarchive"
     },
     {
@@ -41,9 +41,29 @@
       "package": "nsxiv"
     },
     {
+      "tool": "imv",
+      "manager": "apt",
+      "package": "imv"
+    },
+    {
       "tool": "zathura",
       "manager": "apt",
       "package": "zathura"
+    },
+    {
+      "tool": "zathura-cb",
+      "manager": "apt",
+      "package": "zathura-cb"
+    },
+    {
+      "tool": "column",
+      "manager": "apt",
+      "package": "bsdextrautils"
+    },
+    {
+      "tool": "flock",
+      "manager": "apt",
+      "package": "util-linux"
     },
     {
       "tool": "vim",

@@ -9,19 +9,20 @@ An interactive terminal browser and downloader for the **Internet Archive**. Bui
 ---
 ## Features
 * **Interactive Menus**: Uses `fzf` to navigate collections and search results with pagination.
+* **Favorites**: Save collections and search queries, including filters.
 * **Search Options**:
   * **History & Examples**: The prompt displays your recent queries and useful example searches.
   * **Exact Search**: Press `Ctrl+E` to search exactly what you typed, ignoring history suggestions.
   * **Help Guide**: Built-in `--help` command lists all searchable fields like `mediatype` and `creator`.
   * **Sub-Searching**: Narrow down large collections or results without reloading the whole list.
 * **Media & Previews**:
-  * **File Previews**: View files with sizes within an item before playing/downloading.
+  * **Previews**: See an item's collections and file sizes in the side pane.
   * **Subtitle Support**: Automatically finds and loads matching `.srt`, `.ass`, or `.vtt` files in `mpv`.
-  * **Integrated Players**: Opens video/audio in `mpv`, images in `nsxiv`/`imv`, PDFs and ePubs in `zathura`, and text files in `vim`.
+  * **Integrated Players** — Opens video and audio in `mpv`, images in `nsxiv`/`imv`, PDFs, EPUBs, and CBZ comics in `zathura`, and text files in `vim`.
   * **Gallery Mode**: Open all images in an item at once in your image viewer with `[Open all images]`.
 * **Functional Tools**:
   * **Pagination**: Results load in pages to keep the interface fast and responsive.
-  * **Caching**: Search results and collection pages are cached indefinitely. Use `[Refresh page]` to force a reload.
+  * **Caching**: Top collections are cached for seven days. Search results and collection pages stay cached until refreshed.
   * **Downloads**: Pull videos with `yt-dlp` or any specific file using `curl`.
   * **Customizable**: Change your default players and icons at the top of the script.
 
@@ -51,12 +52,20 @@ ia-search --help
 ### Browsing
 Pick a collection from the main menu or select **`[Search all collections]`** to start a query. The search prompt saves your history so you can quickly re-run previous searches or pick from the examples.
 
+The search query and page number appear above the results and side preview. Open an item and choose **Browse collections** to jump to one of its collections. The picker marks the primary collection.
+
+### Favorites
+Press `Ctrl+B` on a collection to favorite it. Use **Save this search** to keep the full query, including filters like `collection:magazine_rack AND language:jpn`. **Add magazine_rack to Favorites** saves the whole collection.
+
+Open **Favorites** from the main menu. A filled star marks a saved search or collection in the results menu. To move your favorites to another device, copy `~/.config/ia-search/collections.list` (under `$XDG_CONFIG_HOME` if set).
+
 ### Keybindings
 | Key | Action |
 | --- | --- |
 | `Enter` | Select highlighted item |
 | `ESC` | Go back / exit |
 | `Ctrl+E` | Submit exact typed query (search prompt only) |
+| `Ctrl+B` | Toggle a collection favorite or remove an entry from the Favorites menu |
 
 ---
 ## Search Guide
@@ -148,13 +157,14 @@ uploader:someuser
 * `ia` (Internet Archive CLI) — Metadata and searching.
 * `fzf` — Interactive menus and filtering.
 * `jq` — JSON parsing.
-* `curl` / `pv` — Downloading and progress bars.
+* `curl` / `pv` — Downloads and progress bars, with Unicode blocks on supported versions of `pv`.
 * `python3` — URL encoding.
+* `flock` (util-linux) — Favorites file locking.
 
 ### Media Viewers
 * `mpv` — Video and audio playback.
 * `nsxiv` — Image viewing (X11). Alternative: `imv` (Wayland).
-* `zathura` — PDF and ePub reading.
+* `zathura` — PDF, EPUB, and CBZ reading. For CBZ, install the [`zathura-cb` plugin](https://pwmt.org/projects/zathura-cb/).
 * `vim` — Text file viewing.
 * `yt-dlp` — Video downloads.
 
@@ -167,9 +177,12 @@ AUDIO_PLAYER="mpv"
 IMAGE_VIEWER="nsxiv"   # X11 — use "imv" for Wayland
 PDF_VIEWER="zathura"
 EPUB_VIEWER="zathura"
+CBZ_VIEWER="zathura"
 TEXT_VIEWER="vim"
 VIDEO_DOWNLOADER="yt-dlp"
 ```
+
+To read a CBZ comic, select the `.cbz` file and choose **Open**. The script downloads a temporary copy and removes it when the viewer closes. To use a different CBZ viewer, set `CBZ_VIEWER` to its executable name or path. If it needs command-line flags, point `CBZ_VIEWER` to a wrapper script.
 
 To use emoji instead of Nerd Font icons, set:
 ```bash
@@ -180,4 +193,4 @@ USE_NERD_ICONS="false"
 ---
 ## Notes
 * **Video loading slow?** This is normal — playback speed depends on Internet Archive's server speed, not your connection.
-* Search results and previews are cached in `~/.cache/ia-search/`. Use the `[Refresh page]` option in any menu to force a fresh fetch.
+* Cache files live in `~/.cache/ia-search/`. Use `[Refresh page]` in results or `[Refresh cache]` in the main menu to reload.

@@ -25,6 +25,7 @@ select_image_viewer() {
 select_image_viewer
 PDF_VIEWER="zathura"
 EPUB_VIEWER="zathura"
+CBZ_VIEWER="zathura"
 TEXT_VIEWER="vim"
 VIDEO_DOWNLOADER="yt-dlp"
 
@@ -36,6 +37,8 @@ if [ "$USE_NERD_ICONS" = "true" ]; then
     # Nerd Font Icons
     ICON_SEARCH=""
     ICON_REFRESH=""
+    ICON_FAVORITE=""
+    ICON_FAVORITE_EMPTY=""
     ICON_NEXT=""
     ICON_PREV=""
     ICON_EXIT=""
@@ -61,6 +64,8 @@ else
     # Emoji Fallbacks
     ICON_SEARCH="🔍"
     ICON_REFRESH="🔄"
+    ICON_FAVORITE="⭐"
+    ICON_FAVORITE_EMPTY="☆"
     ICON_NEXT="➡️"
     ICON_PREV="⬅️"
     ICON_EXIT="❌"
@@ -109,6 +114,11 @@ API_URL="https://archive.org/advancedsearch.php"
 # --- Download Config ---
 DOWNLOAD_BASE_DIR="$HOME/Downloads/ia-downloads"
 
+# --- Favorites Config ---
+FAVORITES_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/ia-search"
+FAVORITES_FILE="$FAVORITES_DIR/collections.list"
+FZF_FOOTER_FAVORITES="$FZF_FOOTER | Ctrl+B to toggle favorite"
+
 # --- Cache Config ---
 export CACHE_BASE_DIR="$HOME/.cache/ia-search"
 export COLLECTIONS_CACHE_DIR="$CACHE_BASE_DIR/collections"
@@ -137,6 +147,13 @@ check_deps() {
     [ "$missing" -eq 1 ] && exit 1
 }
 
+item_collection_ids() {
+    jq -r '.metadata.collection |
+        if type == "array" then .[] else . end |
+        strings | select(test("^[A-Za-z0-9_.-]+$"))' |
+        awk '!seen[$0]++'
+}
+
 # --- FZF Previewer ---
 # Caches and displays file list with sizes for fzf previews
 fzf_previewer() {
@@ -158,57 +175,62 @@ fzf_previewer() {
         return
     fi
 
-    local cache_key
-    cache_key=$(echo "$identifier" | sed "s/[^a-zA-Z0-9_-]/_/g")
-    local cache_file="$PREVIEW_CACHE_DIR/$cache_key"
+    [[ "$identifier" =~ ^[A-Za-z0-9_.-]+$ ]] || return
+    local cache_file="$PREVIEW_CACHE_DIR/$identifier.txt"
     
     if [ -s "$cache_file" ]; then
         cat "$cache_file"
     else
-        local metadata
-        metadata=$(curl -s "https://archive.org/metadata/$identifier/files" 2>/dev/null)
-        
-        if [ -z "$metadata" ]; then
-            local empty_msg="-- Failed to fetch metadata --"
-            echo "$empty_msg" > "$cache_file"
-            echo "$empty_msg"
+        local metadata collections list_output preview_output
+        if ! metadata=$(curl -fsSL "https://archive.org/metadata/$identifier" 2>/dev/null) ||
+            ! jq -e 'type == "object"' >/dev/null 2>&1 <<< "$metadata"; then
+            echo "-- Failed to fetch metadata --"
             return
         fi
 
-        local list_output
-        list_output=$(echo "$metadata" | jq -r '.result[] | 
+        collections=$(item_collection_ids <<< "$metadata")
+        list_output=$(jq -r '(.files // [])[:20][] |
             . as $f | 
             ($f.size // "?" | tonumber? // 0) as $bytes |
             if $bytes > 1073741824 then (($bytes / 1073741824 * 10 | round) / 10 | tostring) + " GB"
             elif $bytes > 1048576 then (($bytes / 1048576 * 10 | round) / 10 | tostring) + " MB"
             elif $bytes > 1024 then (($bytes / 1024 * 10 | round) / 10 | tostring) + " KB"
             else ($bytes | tostring) + " B"
-            end + "\t" + $f.name' 2>/dev/null | \
-            column -t -s $'\t' | head -n 20)
+            end + "\t" + $f.name' <<< "$metadata" 2>/dev/null |
+            column -t -s $'\t')
 
-        if [ -n "$list_output" ]; then
-            echo "$list_output" > "$cache_file"
-            echo "$list_output"
-        else
-            local empty_msg="-- No files found for this item --"
-            echo "$empty_msg" > "$cache_file"
-            echo "$empty_msg"
+        preview_output="${list_output:--- No files found for this item --}"
+        if [[ -n "$collections" ]]; then
+            preview_output="Collections: $(awk 'NR > 1 { printf ", " } { printf "%s", $0 }' <<< "$collections")"$'\n\n'"$preview_output"
         fi
+        printf '%s\n' "$preview_output" > "$cache_file"
+        printf '%s\n' "$preview_output"
     fi
 }
-export -f fzf_previewer
+export -f fzf_previewer item_collection_ids
+
+# --- Progress Display ---
+PV_STYLE=()
+if command pv --bar-style=granular --version >/dev/null 2>&1; then
+    PV_STYLE=(--bar-style=granular)
+fi
+
+show_progress() {
+    command pv "${PV_STYLE[@]}" "$@"
+}
 
 # --- Helper: Download and View ---
 download_and_view() {
     local url="$1"
     local viewer="$2"
+    local suffix="${3:-}"
     (
         local temp_file
-        temp_file=$(mktemp)
+        temp_file=$(mktemp --suffix="$suffix") || exit 1
         trap 'rm -f "$temp_file"' INT TERM EXIT
 
         echo "${ICON_WAIT} Downloading to view..."
-        curl -sL "$url" | pv > "$temp_file"
+        curl -sL "$url" | show_progress > "$temp_file"
 
         if [ -s "$temp_file" ]; then
             "$viewer" "$temp_file" >/dev/null 2>&1
@@ -375,11 +397,139 @@ KEYBINDINGS:
     ESC       Go back to the previous level.
     Enter     Select the highlighted item.
 
+    In Top Collections, Favorites, and search results:
+    Ctrl+B    Add or remove the highlighted collection from Favorites.
+
+    Collection and search actions show a filled star when saved.
+    Select Save this search to keep the full query and its filters.
+
+    Favorites are saved in ${XDG_CONFIG_HOME:-$HOME/.config}/ia-search/collections.list.
+
 DEPENDENCIES:
     fzf, jq, curl, ia, pv, mpv, zathura, yt-dlp, python3, vim
+    CBZ: zathura-cb plugin.
+    Favorites: flock (util-linux).
     Images: swayimg, imv, or imv-dir on Wayland; nsxiv or sxiv on X11.
 EOF
     exit 0
+}
+
+# --- Favorites ---
+favorite_exists() {
+    [[ -f "$FAVORITES_FILE" ]] &&
+        awk -F '[\t\r]' -v id="$1" '$1 == id { found=1; exit } END { exit !found }' "$FAVORITES_FILE"
+}
+
+favorite_action_row() {
+    local identifier="$1" action="$2" add_label="$3" remove_label="$4"
+    local icon="$ICON_FAVORITE_EMPTY" label="$add_label"
+    if favorite_exists "$identifier"; then
+        icon="$ICON_FAVORITE"
+        label="$remove_label"
+    fi
+    printf '%s\t[%s%s %s%s]\n' "$action" "$YELLOW" "$icon" "$label" "$RESET"
+}
+
+toggle_favorite() {
+    local identifier="$1" title="$2" operation="${3:-toggle}"
+
+    if ! mkdir -p -- "$FAVORITES_DIR" || ! (
+        flock -x 9 || exit 1
+
+        local temp_file
+        temp_file=$(mktemp "$FAVORITES_DIR/.favorites.XXXXXX") || exit 1
+        trap 'rm -f -- "$temp_file"' EXIT
+
+        if [[ -f "$FAVORITES_FILE" ]]; then
+            if favorite_exists "$identifier"; then
+                if [[ "$operation" == save ]]; then
+                    echo "${ICON_INFO} Already in Favorites: $title"
+                    exit 0
+                fi
+                awk -F '[\t\r]' -v id="$identifier" '$1 != id' "$FAVORITES_FILE" > "$temp_file" || exit 1
+                mv -- "$temp_file" "$FAVORITES_FILE" || exit 1
+                echo "${ICON_SUCCESS} Removed from Favorites: $title"
+                exit 0
+            fi
+            awk '1' "$FAVORITES_FILE" > "$temp_file" || exit 1
+        fi
+
+        [[ "$operation" == remove ]] && exit 0
+        title=${title//$'\t'/ }
+        title=${title//$'\r'/ }
+        title=${title//$'\n'/ }
+        printf '%s\t%s\n' "$identifier" "${title:-$identifier}" >> "$temp_file" &&
+            mv -- "$temp_file" "$FAVORITES_FILE" || exit 1
+        echo "${ICON_SUCCESS} Added to Favorites: $title"
+    ) 9>"$FAVORITES_DIR/favorites.lock"; then
+        echo "${ICON_ERROR} Could not update Favorites."
+    fi
+}
+
+toggle_search_favorite() {
+    local entry="$1" identifier title metadata media_type
+    identifier=${entry%%$'\t'*}
+    [[ "$entry" == *$'\t'* && "$identifier" != action_* ]] || return 0
+    title=${entry#*$'\t'}
+
+    if favorite_exists "$identifier"; then
+        toggle_favorite "$identifier" "${title:-$identifier}" remove
+        return
+    fi
+
+    if ! metadata=$(curl -fsSL "https://archive.org/metadata/$(urlencode "$identifier")" 2>/dev/null) ||
+        ! media_type=$(jq -er '.metadata.mediatype' <<< "$metadata" 2>/dev/null); then
+        echo "${ICON_WARNING} Could not check the media type for $identifier."
+    elif [[ "$media_type" == collection ]]; then
+        if [[ -z "$title" ]]; then
+            title=$(jq -r '.metadata.title | if type == "array" then .[0] else . end // empty' <<< "$metadata")
+        fi
+        toggle_favorite "$identifier" "${title:-$identifier}" save
+    else
+        echo "${ICON_WARNING} Only collections can be added to Favorites."
+    fi
+}
+
+favorite_query_id() {
+    printf ':search:'
+    printf '%s' "$1" | base64 -w0
+}
+
+show_favorites() {
+    local entries selection key entry identifier query
+    while true; do
+        entries=""
+        if [[ -f "$FAVORITES_FILE" ]]; then
+            entries=$(awk -F '\t' '/^[[:space:]]*(#|$)/ { next }
+                {
+                    sub(/\r$/, "")
+                    title = ($2 == "" ? $1 : $2)
+                    print $1 "\t" ($1 ~ /^:search:/ ? "[Search] " : "") title
+                }' "$FAVORITES_FILE") || return 1
+        fi
+        if [[ -z "$entries" ]]; then
+            echo "${ICON_INFO} No favorites yet. Save a search or press Ctrl+B on a collection."
+            return 0
+        fi
+        selection=$(fzf --height=100% --reverse --border --cycle \
+            --prompt="${ICON_PROMPT_COLLECTION} Favorites > " \
+            --delimiter=$'\t' --with-nth=2.. --sync --expect=ctrl-b \
+            --footer="$FZF_FOOTER | Ctrl+B to remove favorite" <<< "$entries") || return 0
+        key=${selection%%$'\n'*}
+        entry=${selection#*$'\n'}
+        [[ "$entry" == *$'\t'* ]] || return 0
+        identifier=${entry%%$'\t'*}
+
+        if [[ "$key" == ctrl-b ]]; then
+            toggle_favorite "$identifier" "${entry#*$'\t'}" remove
+        elif [[ "$identifier" == :search:* ]]; then
+            if query=$(printf '%s' "${identifier#:search:}" | base64 -d) && [[ -n "$query" ]]; then
+                search_mode "$query"
+            fi
+        else
+            browse_collection "$identifier"
+        fi
+    done
 }
 
 # --- Show Collections ---
@@ -414,102 +564,97 @@ show_collections() {
         return 0
     }
 
+    local json selection key entry identifier
+    local -a all_entries choices
     if [ -f "$TOP_COLLECTIONS_CACHE_FILE" ] && [ $(( $(date +%s) - $(stat -c %Y "$TOP_COLLECTIONS_CACHE_FILE") )) -lt $CACHE_EXPIRY ]; then
         echo "${ICON_PROMPT_COLLECTION} Loading collections from cache..."
         json=$(cat "$TOP_COLLECTIONS_CACHE_FILE")
     else
-        if ! fetch_collections; then
-            echo "${ICON_GOODBYE} Exiting due to network error."
-            exit 1
-        fi
+        fetch_collections || json='{"response":{"docs":[]}}'
     fi
-
-    mapfile -t all_entries < <(echo "$json" | jq -r '.response.docs[] | "\(.title) [\(.identifier)]"')
-    local total_pages=$(( (${#all_entries[@]} + PAGE_SIZE - 1) / PAGE_SIZE ))
 
     while true; do
-    local start=$(( page * PAGE_SIZE ))
-    local end=$(( start + PAGE_SIZE - 1 ))
-    [ $end -ge ${#all_entries[@]} ] && end=$((${#all_entries[@]} - 1))
-    local page_entries=("${all_entries[@]:start:end-start+1}")
-    choices=("[${YELLOW}${ICON_SEARCH}${RESET} Search all collections]" "[${BLUE}${ICON_REFRESH}${RESET} Refresh cache]" "")
-    choices+=("${page_entries[@]}")
-    if [ "$page" -gt 0 ]; then
-        choices+=("" "[${BLUE}${ICON_PREV}${RESET} Previous page]" "[${BLUE}${ICON_NEXT}${RESET} Next page]" "[${RED}${ICON_EXIT}${RESET} Exit]")
-    else
-        choices+=("" "[${BLUE}${ICON_NEXT}${RESET} Next page]" "[${RED}${ICON_EXIT}${RESET} Exit]")
-    fi
-    
-           selection=$(printf '%s\n' "${choices[@]}" | fzf \
+        mapfile -t all_entries < <(jq -r '.response.docs[] |
+            .identifier as $id |
+            ((.title // $id) | gsub("[\t\r\n]"; " ")) as $title |
+            [$id, "\($title) [\($id)]", $title] | join("\t")' <<< "$json")
+        local total_pages=$(( (${#all_entries[@]} + PAGE_SIZE - 1) / PAGE_SIZE ))
+        (( total_pages > 0 )) || total_pages=1
+        local start=$(( page * PAGE_SIZE ))
+        choices=(
+            $':search\t'"[${YELLOW}${ICON_SEARCH}${RESET} Search all collections]"
+            $':favorites\t'"[${CYAN}${ICON_OPEN}${RESET} Favorites]"
+            $':refresh\t'"[${BLUE}${ICON_REFRESH}${RESET} Refresh cache]"
+            ""
+        )
+        choices+=("${all_entries[@]:start:PAGE_SIZE}")
+        choices+=("")
+        if (( page > 0 )); then
+            choices+=($':prev\t'"[${BLUE}${ICON_PREV}${RESET} Previous page]")
+        fi
+        if (( page + 1 < total_pages )); then
+            choices+=($':next\t'"[${BLUE}${ICON_NEXT}${RESET} Next page]")
+        fi
+        choices+=($':exit\t'"[${RED}${ICON_EXIT}${RESET} Exit]")
+
+        selection=$(printf '%s\n' "${choices[@]}" | fzf \
             --ansi \
-            --prompt="${MAGENTA}${BOLD}${ICON_PROMPT_COLLECTION}${RESET} Select collection (Page $((page+1))/$total_pages) > " \
-            --height=100% \
-            --reverse \
-            --border \
-            --cycle \
-            --footer="$FZF_FOOTER")
+            --prompt="${MAGENTA}${BOLD}${ICON_PROMPT_COLLECTION}${RESET} Select collection (Page $((page+1))/${total_pages}) > " \
+            --height=100% --reverse --border --cycle \
+            --delimiter=$'\t' --with-nth=2 --sync --expect=ctrl-b \
+            --footer="$FZF_FOOTER_FAVORITES")
+        key=${selection%%$'\n'*}
+        entry=${selection#*$'\n'}
+        identifier=${entry%%$'\t'*}
 
-        # Strip ANSI codes for reliable case matching
-        sanitized_selection=$(echo "$selection" | sed 's/\x1b\[[0-9;]*[mG]//g')
+        if [[ "$key" == ctrl-b ]]; then
+            if [[ "$entry" == *$'\t'* && -n "$identifier" && "$identifier" != :* ]]; then
+                toggle_favorite "$identifier" "${entry##*$'\t'}"
+            fi
+            continue
+        fi
 
-        case "$sanitized_selection" in
-            "[${ICON_REFRESH} Refresh cache]")
-                fetch_collections
-                mapfile -t all_entries < <(echo "$json" | jq -r '.response.docs[] | "\(.title) [\(.identifier)]"')
-                total_pages=$(( (${#all_entries[@]} + PAGE_SIZE - 1) / PAGE_SIZE ))
-                page=0
-                echo "${ICON_SUCCESS} Cache refreshed."
-                ;;
-            "[${ICON_SEARCH} Search all collections]")
-                search_mode
-                continue
-                ;;
-            "[${ICON_NEXT} Next page]")
-                ((page++))
-                if [ $page -ge $total_pages ]; then
-                    page=$((total_pages - 1))
+        case "$identifier" in
+            :refresh)
+                if fetch_collections; then
+                    page=0
+                    echo "${ICON_SUCCESS} Cache refreshed."
                 fi
                 ;;
-            "[${ICON_PREV} Previous page]")
-                if [ "$page" -gt 0 ]; then
-                    ((page--))
-                fi
-                ;;
-            "[${ICON_EXIT} Exit]")
-                echo "${ICON_GOODBYE} Exiting."
-                exit 0
-                ;;
+            :search) search_mode ;;
+            :favorites) show_favorites ;;
+            :next) ((page++)) ;;
+            :prev) ((page--)) ;;
+            :exit) break ;;
             "")
-                if [ "$page" -gt 0 ]; then
-                    ((page--))
-                else
-                    echo "${ICON_GOODBYE} Exiting."
-                    exit 0
-                fi
+                if (( page == 0 )); then break; fi
+                ((page--))
                 ;;
-            *)
-                collection=$(echo "$selection" | sed -E 's/.*\[(.*)\].*/\1/')
-                browse_collection "$collection"
-                ;;
+            *) browse_collection "$identifier" ;;
         esac
     done
 }
 
 # --- Search Mode ---
 search_mode() {
-    local query identifier_or_action page rows item_json selected_line
+    local query identifier_or_action page rows item_json selected_line key
+    local searched_collection favorite_status search_label
+    local saved_query="${1:-}" query_id
     local -a choices items
     local preview_command='bash -c '\''fzf_previewer "$@"'\'' _ {1}'
 
     while true; do
-        # --- Prepare history and examples for fzf ---
-        local full_list=""
-        local history_content=""
-        if [ -s "$IA_SEARCH_HISTORY_FILE" ]; then
-            history_content=$(tac "$IA_SEARCH_HISTORY_FILE" | awk '!a[$0]++' | head -n 20)
-        fi
+        if [[ -n "$saved_query" ]]; then
+            query="$saved_query"
+        else
+            # --- Prepare history and examples for fzf ---
+            local full_list=""
+            local history_content=""
+            if [ -s "$IA_SEARCH_HISTORY_FILE" ]; then
+                history_content=$(tac "$IA_SEARCH_HISTORY_FILE" | awk '!a[$0]++' | head -n 20)
+            fi
 
-        local examples='collection:anime_miscellaneous
+            local examples='collection:anime_miscellaneous
 title:irezumi
 title:"typhoon club"
 subject:"japanese cinema"
@@ -527,30 +672,31 @@ collection:magazine_rack AND language:jpn
 subject:gravure AND mediatype:image
 uploader:some_username'       
 
-        full_list=$(printf "%s\n%s" "$history_content" "$examples" | awk '!b[$0]++ {if (NF) print}')
+            full_list=$(printf "%s\n%s" "$history_content" "$examples" | awk '!b[$0]++ {if (NF) print}')
 
-        # --- Get query from fzf ---
-        query=$(printf "%s\n" "$full_list" | fzf --ansi \
-            --prompt="${MAGENTA}${BOLD}${ICON_SEARCH}${RESET} Type search query (ESC to return) > " \
-            --print-query \
-            --height=100% \
-            --reverse \
-            --border \
-            --cycle \
-            --bind 'ctrl-e:print-query' \
-            --footer="$FZF_FOOTER_SEARCH")
+            # --- Get query from fzf ---
+            query=$(printf "%s\n" "$full_list" | fzf --ansi \
+                --prompt="${MAGENTA}${BOLD}${ICON_SEARCH}${RESET} Type search query (ESC to return) > " \
+                --print-query \
+                --height=100% \
+                --reverse \
+                --border \
+                --cycle \
+                --bind 'ctrl-e:print-query' \
+                --footer="$FZF_FOOTER_SEARCH")
        
-        query=$(echo "$query" | tail -n 1)
+            query=$(echo "$query" | tail -n 1)
 
-        [ -z "$query" ] && return 0
+            [ -z "$query" ] && return 0
 
-        # --- Update history file ---
-        if [ -s "$IA_SEARCH_HISTORY_FILE" ]; then
-            grep -Fxv -- "$query" "$IA_SEARCH_HISTORY_FILE" > "${IA_SEARCH_HISTORY_FILE}.tmp" && \
-            mv "${IA_SEARCH_HISTORY_FILE}.tmp" "$IA_SEARCH_HISTORY_FILE"
+            # --- Update history file ---
+            if [ -s "$IA_SEARCH_HISTORY_FILE" ]; then
+                grep -Fxv -- "$query" "$IA_SEARCH_HISTORY_FILE" > "${IA_SEARCH_HISTORY_FILE}.tmp" && \
+                mv "${IA_SEARCH_HISTORY_FILE}.tmp" "$IA_SEARCH_HISTORY_FILE"
+            fi
+            echo "$query" >> "$IA_SEARCH_HISTORY_FILE"
         fi
-        echo "$query" >> "$IA_SEARCH_HISTORY_FILE"
-        
+
         local final_query
         if [[ "$query" != *":"* ]]; then
             final_query="title:\"$query\""
@@ -560,6 +706,13 @@ uploader:some_username'
         
         page=1
         rows=28
+        query_id=$(favorite_query_id "$query") || return 1
+        searched_collection=
+        favorite_status=
+        if [[ "$final_query" =~ ^collection:([[:alnum:]_.-]+)([[:space:]]+AND[[:space:]]|$) ||
+              "$final_query" =~ ^collection:\"([[:alnum:]_.-]+)\"([[:space:]]+AND[[:space:]]|$) ]]; then
+            searched_collection=${BASH_REMATCH[1]}
+        fi
 
         while true; do
             echo "${ICON_SEARCH} Searching for \"$query\" (Page $page)..."
@@ -581,7 +734,6 @@ uploader:some_username'
             fi
             if [ -z "$item_json" ]; then
                 echo "${ICON_WARNING} No results found for page $page."
-                if [ "$page" -eq 1 ]; then break; fi
             fi
             
             # Format as: identifier<TAB>title
@@ -589,7 +741,13 @@ uploader:some_username'
 
             # Build choices with uniform ID<TAB>TEXT format
             choices=()
+            if [[ -n "$searched_collection" ]]; then
+                choices+=("$(favorite_action_row "$searched_collection" action_favorite_collection \
+                    "Add $searched_collection to Favorites" "Remove $searched_collection from Favorites")")
+            fi
             
+            choices+=("$(favorite_action_row "$query_id" action_save_search \
+                "Save this search" "Remove this search from Favorites")")
             if [ "${#items[@]}" -eq "$rows" ]; then
                 choices+=($'action_next_page\t'"[${BLUE}${ICON_NEXT} Next page${RESET}]")
             fi
@@ -607,20 +765,44 @@ uploader:some_username'
 
             choices+=("${items[@]}")
 
+            search_label="${MAGENTA}${BOLD}${ICON_PROMPT_TITLE} Search: $query · Page $page${RESET}"
+            if [[ -n "$favorite_status" ]]; then
+                search_label+=" · $favorite_status"
+            fi
+
             selected_line=$(printf '%s\n' "${choices[@]}" | fzf \
                 --ansi \
-                --prompt="${MAGENTA}${BOLD}${ICON_PROMPT_TITLE}${RESET} Select title from '$query' (Page $page) > " \
+                --prompt="Filter results > " \
                 --height=100% \
                 --reverse \
                 --border \
+                --border-label=" $search_label " \
+                --border-label-pos=2 \
                 --delimiter=$'\t' \
                 --with-nth=2.. \
                 --preview-window=right:50% \
                 --preview "$preview_command" \
                 --cycle \
-                --footer="$FZF_FOOTER")
+                --sync --expect=ctrl-b --footer="$FZF_FOOTER_FAVORITES")
             
-            identifier_or_action=$(echo "$selected_line" | awk -F'\t' '{print $1}')
+            key=${selected_line%%$'
+'*}
+            selected_line=${selected_line#*$'
+'}
+            identifier_or_action=${selected_line%%$'\t'*}
+            favorite_status=
+            if [[ "$identifier_or_action" == action_save_search ]]; then
+                favorite_status=$(toggle_favorite "$query_id" "$query")
+                continue
+            fi
+            if [[ "$identifier_or_action" == action_favorite_collection ]]; then
+                favorite_status=$(toggle_search_favorite "$searched_collection"$'\t')
+                continue
+            fi
+            if [[ "$key" == ctrl-b ]]; then
+                favorite_status=$(toggle_search_favorite "$selected_line")
+                continue
+            fi
 
             if [ -z "$identifier_or_action" ]; then
                 break
@@ -680,28 +862,46 @@ uploader:some_username'
                     local cache_file="$SEARCH_CACHE_DIR/${combined_query_hash}-all.json"
 
                     if [ -f "$cache_file" ]; then
-                        pv -N "Loading from cache" "$cache_file" > "$temp_combined_file"
+                        show_progress -N "Loading from cache" "$cache_file" > "$temp_combined_file"
                     else
-                        (ia search "$combined_query" --field identifier --field title | tee "$cache_file" | pv -l -s "$total_combined_hits" -N "Loading combined" > "$temp_combined_file")
+                        (ia search "$combined_query" --field identifier --field title | tee "$cache_file" | show_progress -l -s "$total_combined_hits" -N "Loading combined" > "$temp_combined_file")
                     fi
                     
-                    local selected_sub_item_line
-                    selected_sub_item_line=$(cat "$temp_combined_file" | jq -s -r '.[] | "\(.identifier)\t\(.title)"' | fzf \
+                    local selected_sub_item_line combined_query_id
+                    combined_query_id=$(favorite_query_id "$combined_query") || return 1
+                    selected_sub_item_line=$({
+                        favorite_action_row "$combined_query_id" action_save_search \
+                            "Save this search" "Remove this search from Favorites"
+                        jq -s -r '.[] | "\(.identifier)\t\(.title)"' "$temp_combined_file"
+                    } | fzf \
                         --ansi \
-                        --prompt="${MAGENTA}${BOLD}${ICON_PROMPT_TITLE}${RESET} Results for '$combined_query' > " \
+                        --prompt="Filter results > " \
                         --height=100% \
                         --reverse \
                         --border \
+                        --border-label=" ${MAGENTA}${BOLD}${ICON_PROMPT_TITLE} Search: $combined_query${RESET} " \
+                        --border-label-pos=2 \
                         --delimiter=$'\t' \
                         --with-nth=2.. \
                         --preview-window=right:50% \
                         --preview "$preview_command" \
                         --cycle \
-                        --footer="$FZF_FOOTER")
+                        --sync --expect=ctrl-b --footer="$FZF_FOOTER_FAVORITES")
                     
                     rm "$temp_combined_file"
 
-                    if [ -n "$selected_sub_item_line" ]; then
+                    key=${selected_sub_item_line%%$'
+'*}
+                    selected_sub_item_line=${selected_sub_item_line#*$'
+'}
+                    if [[ "${selected_sub_item_line%%$'\t'*}" == action_save_search ]]; then
+                        favorite_status=$(toggle_favorite "$combined_query_id" "$combined_query")
+                        continue
+                    fi
+                    if [[ "$key" == ctrl-b ]]; then
+                        favorite_status=$(toggle_search_favorite "$selected_sub_item_line")
+                        continue
+                    elif [ -n "$selected_sub_item_line" ]; then
                         local final_identifier
                         final_identifier=$(echo "$selected_sub_item_line" | awk 'BEGIN{FS="\t"} {print $1}')
                         open_item "$final_identifier"
@@ -717,12 +917,13 @@ uploader:some_username'
                     ;;
             esac
         done
+        [[ -z "$saved_query" ]] || return 0
     done
 }
 
 # --- Browse Collection ---
 browse_collection() {
-    local coll="$1"
+    local coll="$1" favorite_status=""
     local identifier_or_action page rows item_json selected_line
     local -a choices items
     
@@ -749,13 +950,13 @@ browse_collection() {
 
        if [ -z "$item_json" ]; then
             echo "${ICON_WARNING} No results found for page $page."
-            if [ "$page" -eq 1 ]; then break; fi
         fi
 
         mapfile -t items < <(echo "$item_json" | jq -s -r '.[] | "\(.identifier)\t\(.title)"')
 
         # Build choices with uniform ID<TAB>TEXT format
-        choices=()
+        choices=("$(favorite_action_row "$coll" action_favorite_collection \
+            "Add $coll to Favorites" "Remove $coll from Favorites")")
         
         if [ "${#items[@]}" -eq "$rows" ]; then
             choices+=($'action_next_page\t'"[${BLUE}${ICON_NEXT} Next page${RESET}]")
@@ -785,7 +986,7 @@ browse_collection() {
             --preview-window=right:50% \
             --preview "$preview_command" \
             --cycle \
-            --footer="$FZF_FOOTER")
+            --footer="$FZF_FOOTER${favorite_status:+ | $favorite_status}")
 
         identifier_or_action=$(echo "$selected_line" | awk -F'\t' '{print $1}')
 
@@ -793,7 +994,11 @@ browse_collection() {
             return
         fi
 
+        favorite_status=
         case "$identifier_or_action" in
+            "action_favorite_collection")
+                favorite_status=$(toggle_search_favorite "$coll"$'\t')
+                ;;
             "action_refresh")
                 if [ -f "$cache_file" ]; then
                     rm "$cache_file"
@@ -847,9 +1052,9 @@ browse_collection() {
                 local cache_file="$SEARCH_CACHE_DIR/${combined_query_hash}-all.json"
 
                 if [ -f "$cache_file" ]; then
-                    pv -N "Loading from cache" "$cache_file" > "$temp_combined_file"
+                    show_progress -N "Loading from cache" "$cache_file" > "$temp_combined_file"
                 else
-                    (ia search "$combined_query" --field identifier --field title | tee "$cache_file" | pv -l -s "$total_combined_hits" -N "Loading combined" > "$temp_combined_file")
+                    (ia search "$combined_query" --field identifier --field title | tee "$cache_file" | show_progress -l -s "$total_combined_hits" -N "Loading combined" > "$temp_combined_file")
                 fi
                 
                 local selected_sub_item_line
@@ -894,19 +1099,19 @@ open_item() {
     echo "${ICON_OPEN} Fetching file list for: $identifier ..."
 
     local metadata
-    metadata=$(curl -s "https://archive.org/metadata/$identifier/files" 2>/dev/null)
-
-    if [ -z "$metadata" ]; then
+    if ! metadata=$(curl -fsSL "https://archive.org/metadata/$(urlencode "$identifier")" 2>/dev/null) ||
+        ! jq -e 'type == "object"' >/dev/null 2>&1 <<< "$metadata"; then
         echo "${ICON_WARNING} No files found for this item or failed to fetch."
         sleep 2
         return
     fi
 
     # Plain file list for subtitle matching, image detection etc.
-    local file_list
-    file_list=$(echo "$metadata" | jq -r '.result[].name' 2>/dev/null)
+    local file_list collections
+    file_list=$(jq -r '.files[]?.name' <<< "$metadata")
+    collections=$(item_collection_ids <<< "$metadata")
 
-    if [ -z "$file_list" ]; then
+    if [[ -z "$file_list" && -z "$collections" ]]; then
         echo "${ICON_WARNING} No files found for this item or failed to fetch."
         sleep 2
         return
@@ -914,7 +1119,7 @@ open_item() {
 
     # Display list with sizes: filename<TAB>size  filename
     local file_list_display
-    file_list_display=$(echo "$metadata" | jq -r '.result[] |
+    file_list_display=$(jq -r '.files[]? |
         . as $f |
         ($f.size // "?" | tonumber? // 0) as $bytes |
         ($f.name) + "\t" +
@@ -922,7 +1127,10 @@ open_item() {
         elif $bytes > 1048576 then (($bytes / 1048576 * 10 | round) / 10 | tostring) + " MB"
         elif $bytes > 1024 then (($bytes / 1024 * 10 | round) / 10 | tostring) + " KB"
         else ($bytes | tostring) + " B"
-        end) + "  " + $f.name' 2>/dev/null)
+        end) + "  " + $f.name' <<< "$metadata" 2>/dev/null)
+    local browse_collections_key=$':browse-collections\t'
+    local browse_collections_label="${ICON_PROMPT_COLLECTION} Browse collections"
+    local browse_collections_row="$browse_collections_key[${CYAN}$browse_collections_label${RESET}]"
 
     # Helper function to extract a 'core' name for fuzzy matching
     get_core_name() {
@@ -941,7 +1149,10 @@ open_item() {
 
     while true; do
         local selected_line
-        selected_line=$(printf '%s\n' "$file_list_display" | fzf \
+        selected_line=$({
+            [[ -z "$collections" ]] || printf '%s\n' "$browse_collections_row"
+            [[ -z "$file_list_display" ]] || printf '%s\n' "$file_list_display"
+        } | fzf \
             --ansi \
             --prompt="${MAGENTA}${BOLD}${ICON_PROMPT_FILE}${RESET} Select a file to open (or press esc to go back) > " \
             --height=100% \
@@ -954,6 +1165,17 @@ open_item() {
 
         if [ -z "$selected_line" ]; then
             return
+        fi
+        if [[ "$selected_line" == "$browse_collections_row" ||
+              "$selected_line" == "$browse_collections_key[$browse_collections_label]" ]]; then
+            local collection
+            collection=$(awk '{ print $0 "\t" $0 (NR == 1 ? " (primary)" : "") }' <<< "$collections" |
+                fzf --prompt="Browse collections > " --height=100% --reverse --border --cycle \
+                    --delimiter=$'\t' --with-nth=2.. --footer="$FZF_FOOTER")
+            if [[ -n "$collection" ]]; then
+                browse_collection "${collection%%$'\t'*}"
+            fi
+            continue
         fi
 
         # Extract clean filename from column 1
@@ -1070,7 +1292,7 @@ open_item() {
                             echo -n "."
                             sleep 0.1
                         done
-                    ) | pv -p -t -e -N "${ICON_LAUNCH} Launching mpv" -s 200 > /dev/null
+                    ) | show_progress -p -t -e -N "${ICON_LAUNCH} Launching mpv" -s 200 > /dev/null
 
                     if ! kill -0 "$pid" 2>/dev/null; then
                         echo "${ICON_WARNING} mpv failed to launch. Error log:"
@@ -1094,6 +1316,8 @@ open_item() {
                     download_and_view "$url" "$PDF_VIEWER" ;; 
                 *.epub)
                     download_and_view "$url" "$EPUB_VIEWER" ;;
+                *.[cC][bB][zZ])
+                    download_and_view "$url" "$CBZ_VIEWER" .cbz ;;
                 *.txt|*.md|*.rst|*.csv|*.log|*.tex|*.sh|*.py|*.c|*.cpp|*.h|*.java|*.js|*.ts|*.json|*.xml|*.yaml|*.yml|*.ini|*.conf|*.cfg)
                     local temp_file
                     temp_file=$(mktemp)

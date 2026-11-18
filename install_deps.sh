@@ -1,7 +1,21 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-DEPS_FILE="${1:-deps-ubuntu.json}"
+SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
+DEPS_FILE="${1:-$SCRIPT_DIR/deps-ubuntu.json}"
+MIN_FZF_VERSION="0.63.0"
+
+fzf_version_ok() {
+  local version
+  version=$(fzf --version 2>/dev/null) || return 1
+  dpkg --compare-versions "${version%% *}" ge "$MIN_FZF_VERSION" 2>/dev/null
+}
+
+fzf_version_error() {
+  echo "[!] ia-search requires fzf $MIN_FZF_VERSION or newer." >&2
+  echo "    Install a compatible release from https://github.com/junegunn/fzf/releases," >&2
+  echo "    make sure it is first on PATH, then rerun this installer." >&2
+}
 
 echo "[*] Using dependencies file: $DEPS_FILE"
 
@@ -25,6 +39,17 @@ if [[ "$APT_UPDATED" -eq 0 ]]; then
   echo "[*] Updating apt package lists..."
   sudo apt update
   APT_UPDATED=1
+fi
+
+# Check the configured repositories before installing the rest of the dependencies.
+if jq -e '.dependencies[] | select(.tool == "fzf" and .manager == "apt")' "$DEPS_FILE" >/dev/null &&
+   ! fzf_version_ok; then
+  FZF_CANDIDATE=$(LC_ALL=C apt-cache policy fzf | awk '/Candidate:/ { print $2 }')
+  if [[ -z "$FZF_CANDIDATE" || "$FZF_CANDIDATE" == "(none)" ]] ||
+     ! dpkg --compare-versions "$FZF_CANDIDATE" ge "$MIN_FZF_VERSION"; then
+    fzf_version_error
+    exit 1
+  fi
 fi
 
 # Check if there are any pip-managed dependencies
@@ -76,6 +101,11 @@ jq -c '.dependencies[]' "$DEPS_FILE" | while read -r dep; do
     continue
   fi
 
+  if [[ "$TOOL" == "fzf" ]] && fzf_version_ok; then
+    echo "[*] Compatible fzf already on PATH."
+    continue
+  fi
+
   echo "[*] Installing '$TOOL' using '$MANAGER' ('$PACKAGE')..."
 
   case "$MANAGER" in
@@ -90,10 +120,33 @@ jq -c '.dependencies[]' "$DEPS_FILE" | while read -r dep; do
       fi
       "$PIP" install "$PACKAGE"
       ;;
+    pipx)
+      if ! command -v pipx >/dev/null 2>&1; then
+        sudo apt install -y pipx
+      fi
+      pipx install "$PACKAGE"
+      PIPX_APP_BIN=$(pipx environment --value PIPX_BIN_DIR)
+      if [[ ! -x "$PIPX_APP_BIN/$TOOL" ]]; then
+        echo "[!] pipx did not install '$TOOL' in $PIPX_APP_BIN." >&2
+        exit 1
+      fi
+      case ":$PATH:" in
+        *":$PIPX_APP_BIN:"*) ;;
+        *)
+          pipx ensurepath
+          echo "[*] Start a new shell to put '$TOOL' on PATH."
+          ;;
+      esac
+      ;;
     *)
       echo "[!] Unknown package manager '$MANAGER' for tool '$TOOL' – skipping."
       ;;
   esac
+
+  if [[ "$TOOL" == "fzf" ]] && ! fzf_version_ok; then
+    fzf_version_error
+    exit 1
+  fi
 done
 
 echo
